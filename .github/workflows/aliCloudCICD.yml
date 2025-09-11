@@ -15,13 +15,13 @@ jobs:
 
       - name: 📦 Build Frontend
         run: |
-          cd frontend
+          cd frontend/app
           npm install
           npm run build
 
       - name: 📦 Build Admin Frontend
         run: |
-          cd frontend-admin
+          cd frontend-admin/app
           npm install
           npm run build
 
