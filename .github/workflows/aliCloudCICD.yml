@@ -1,0 +1,40 @@
+name: 🚀 Deploy to Server
+
+on:
+  pull_request:
+    branches: [ "main" ] # 当针对 main 分支创建 PR 时触发
+    types: [opened, synchronize, reopened] # 创建PR、推送新提交、重新打开PR时触发
+
+jobs:
+  deploy:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: 🛎️ Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Build Frontend
+        run: |
+          cd frontend
+          npm ci
+          npm run build
+
+      - name: 📦 Build Admin Frontend
+        run: |
+          cd frontend-admin
+          npm ci
+          npm run build
+
+      - name: 🔌 SSH & Deploy
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.aliCloud }}
+          script: |
+            cd /path/to/your/project
+            git reset --hard HEAD
+            git pull origin main
+            docker compose down
+            docker compose up -d --build
+            docker image prune -f
