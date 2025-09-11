@@ -16,13 +16,13 @@ jobs:
       - name: 📦 Build Frontend
         run: |
           cd frontend
-          npm ci
+          npm install
           npm run build
 
       - name: 📦 Build Admin Frontend
         run: |
           cd frontend-admin
-          npm ci
+          npm install
           npm run build
 
       - name: 🔌 SSH & Deploy
@@ -32,7 +32,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.aliCloud }}
           script: |
-            cd /path/to/your/project
+            cd /home/project/Volunteer-webstie
             git reset --hard HEAD
             git pull origin main
             docker compose down
