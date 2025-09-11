@@ -5,10 +5,11 @@ from django.conf.urls.static import static
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/npo/', include('npo.urls')),
-    path('api/visitor/', include('visitor.urls')),
-    path('api/admin/', include('admin_app.urls')),
+    # path('api/npo/', include('npo.urls')),
+    # path('api/visitor/', include('visitor.urls')),
+    # path('api/admin/', include('admin_app.urls')),
     path('api/auth/', include('rest_framework.urls')),
+    path('api/accounts/', include('accounts.urls')), # test 本地测试 xjn
 ]
 
 if settings.DEBUG:
