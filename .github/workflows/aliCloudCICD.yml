@@ -16,13 +16,13 @@ jobs:
       - name: 📦 Build Frontend
         run: |
           cd frontend
-          npm ci
+          npm install
           npm run build
 
       - name: 📦 Build Admin Frontend
         run: |
           cd frontend-admin
-          npm ci
+          npm install
           npm run build
 
       - name: 🔌 SSH & Deploy
