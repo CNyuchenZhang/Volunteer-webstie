@@ -1,31 +1,33 @@
-name: 🚀 Deploy to Server
+name: 🚀 CI/CD Pipeline
 
 on:
   pull_request:
-    branches: [ "main" ] # 当针对 main 分支创建 PR 时触发
-    types: [opened, synchronize, reopened] # 创建PR、推送新提交、重新打开PR时触发
+    branches: [ "main" ]
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [ "main" ]
 
 jobs:
-  deploy:
+  build-test:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-22.04
-
     steps:
-      - name: 🛎️ Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - name: Build Frontend
+        run: cd frontend/app && npm install && npm run build
+      - name: Build Admin Frontend
+        run: cd frontend-admin/app && npm install && npm run build
 
-      - name: 📦 Build Frontend
-        run: |
-          cd frontend/app
-          npm install
-          npm run build
-
-      - name: 📦 Build Admin Frontend
-        run: |
-          cd frontend-admin/app
-          npm install
-          npm run build
-
-      - name: 🔌 SSH & Deploy
+  deploy-prod:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Frontend
+        run: cd frontend/app && npm install && npm run build
+      - name: Build Admin Frontend
+        run: cd frontend-admin/app && npm install && npm run build
+      - name: Deploy to Production
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ secrets.SSH_HOST }}
