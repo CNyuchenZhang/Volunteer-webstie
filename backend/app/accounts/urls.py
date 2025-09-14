@@ -8,6 +8,6 @@ router.register('accounts', views.AccountViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
-    # path('register/', views.register, name='register'),
-    # path('login/', views.login, name='login'),
+    path('register/', views.register, name='register'),
+    path('login/', views.login, name='login'),
 ]
