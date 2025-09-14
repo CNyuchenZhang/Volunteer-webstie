@@ -9,8 +9,12 @@ class AccountSerializer(serializers.ModelSerializer):
 
     def validate_Character(self, value):
         """验证用户类型"""
-        if value not in [0, 1, 2]:
-            raise serializers.ValidationError("用户类型必须是0、1或2")
+        USER_TYPE_ADMIN = 0
+        USER_TYPE_VOLUNTEER = 1
+        USER_TYPE_NPO = 2
+
+        if value not in [USER_TYPE_VOLUNTEER, USER_TYPE_ADMIN, USER_TYPE_NPO]:
+            raise serializers.ValidationError("用户类型必须是Volunteer、NPO或Admin")
         return value
 
     def validate_password(self, value):
@@ -61,19 +65,15 @@ class AccountSerializer(serializers.ModelSerializer):
 class LoginSerializer(serializers.Serializer):
     username = serializers.CharField()
     password = serializers.CharField()
-# class AccountSerializer(serializers.ModelSerializer):
-#     password = serializers.CharField(write_only=True, required=True)
-#
-#     class Meta:
-#         model = Account
-#         fields = ('id', 'username', 'email', 'password', 'Character')
-#         extra_kwargs = {'password': {'write_only': True}}
-#
-#     def create(self, validated_data):
-#         password = validated_data.pop('password')
-#         user = Account.objects.create_user(**validated_data)
-#         user.set_password(password)
-#         user.save()
-#         return user
-#
-#
+    Character = serializers.IntegerField()
+    def validate_Character(self, value):
+        """验证用户类型"""
+        if value not in [0, 1, 2]:
+            raise serializers.ValidationError("用户类型必须是0、1或2")
+        return value
+
+
+class UsernameCheckSerializer(serializers.Serializer):
+    username = serializers.CharField(
+        required=True,
+    )
