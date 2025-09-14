@@ -167,15 +167,15 @@ REST_FRAMEWORK = {
     ],
 }
 # 配置CORS允许前端访问
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",  # Vue开发服务器默认端口
-    "http://127.0.0.1:5173",
-    "http://localhost:8080",
-    "http://127.0.0.1:8080",
-    "http://127.0.0.1:8081",
-    "http://localhost:8081",
-    "http://nginx:80"
-]
+# CORS_ALLOWED_ORIGINS = [
+#     "http://localhost:5173",  # Vue开发服务器默认端口
+#     "http://127.0.0.1:5173",
+#     "http://localhost:8080",
+#     "http://127.0.0.1:8080",
+#     "http://127.0.0.1:8081",
+#     "http://localhost:8081",
+#     "http://nginx:80"
+# ]
 
 # 允许携带Cookie
 CORS_ALLOW_CREDENTIALS = True

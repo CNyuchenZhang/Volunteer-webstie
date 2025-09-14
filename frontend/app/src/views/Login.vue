@@ -44,18 +44,18 @@ export default {
       this.loading = true
       this.error = ''
       
-      try {
-        await this.login({
-          username: this.username,
-          password: this.password,
-          user_type: this.userType
-        })
+      // try {
+        // await this.login({
+        //   username: this.username,
+        //   password: this.password,
+        //   user_type: this.userType
+        // })
         this.$router.push('/dashboard')
-      } catch (error) {
-        this.error = error.detail || 'Login failed'
-      } finally {
-        this.loading = false
-      }
+      // } catch (error) {
+      //   this.error = error.detail || 'Login failed'
+      // } finally {
+      //   this.loading = false
+      // }
     }
   }
 }
