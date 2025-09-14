@@ -11,3 +11,7 @@
 7. 停止项目```docker compose down```
 8. ```docker compose build --no-cache```指令可以强制重新构建镜像，防止项目文件更改之后缓存依旧存在，发生报错
 <br>运行完需要再次运行```docker compose up -d```命令启动项目。
+
+---
+### 备忘录：
+- ``` git checkout yifan -- backend/app/accounts/views.py```可以通过这条指令将别人的分支的指定文件覆盖到自己的分支里。 <br>注意，运行这条指令之前，一定要checkout到自己的分支中。
