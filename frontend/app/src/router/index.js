@@ -22,10 +22,10 @@ const routes = [
     name: 'Dashboard',
     redirect: to => {
       const userType = store.getters.userType
-      if (userType === 'npo') return { name: 'NpoDashboard' }
-      if (userType === 'visitor') return { name: 'VisitorDashboard' }
-      if (userType === 'admin') return { name: 'AdminDashboard' }
-      return { name: 'Home' }
+      // if (userType === 'npo') return { name: 'NpoDashboard' }
+      // if (userType === 'visitor') return { name: 'VisitorDashboard' }
+      // if (userType === 'admin') return { name: 'AdminDashboard' }
+      return { name: 'NpoDashboard' }
     }
   },
   {
