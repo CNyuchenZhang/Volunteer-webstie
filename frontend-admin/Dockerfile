@@ -9,4 +9,4 @@ COPY app/ .
 
 EXPOSE 8081
 
-CMD ["npm", "run", "serve"]
+CMD ["npm", "run", "dev"]
