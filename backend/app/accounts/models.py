@@ -19,5 +19,12 @@ class Account(AbstractUser):
 # 问题：如果将email的代码删除，则email不是必填项。那么，如何规定user类原来的参数为必填项？
     Character = models.IntegerField(blank = False)
 
+
+    def save(self, *args, **kwargs):
+        # 如果是超级用户，自动设置为 admin
+        if self.is_superuser and not self.Character:
+            self.Character = 0
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return self.username
