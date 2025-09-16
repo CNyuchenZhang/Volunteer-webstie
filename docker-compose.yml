@@ -35,7 +35,7 @@ services:
       - /app/node_modules
       - ./frontend/app:/app
     # ports:
-    #   - "8080:5173"
+    #   - "8080:8080"
     environment:
       - VUE_APP_API_URL=http://backend:8000
     depends_on:
@@ -50,7 +50,7 @@ services:
       - /app/node_modules
       - ./frontend-admin/app:/app
     # ports:
-    #   - "8081:5173"
+    #   - "8081:8081"
     environment:
       - VUE_APP_API_URL=http://backend:8000
     depends_on:
