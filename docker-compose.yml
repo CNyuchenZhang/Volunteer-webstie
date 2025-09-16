@@ -30,7 +30,7 @@ services:
 
   frontend:
     build: ./frontend
-    command: npm run serve
+    command: pnpm run dev
     volumes:
       - ./frontend/app:/app
       - /app/node_modules
@@ -45,7 +45,7 @@ services:
 
   frontend-admin:
     build: ./frontend-admin
-    command: npm run serve
+    command: pnpm run dev
     volumes:
       - ./frontend-admin/app:/app
       - /app/node_modules
