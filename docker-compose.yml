@@ -32,10 +32,10 @@ services:
     build: ./frontend
     command: npm run dev
     volumes:
-      - ./frontend/app:/app
       - /app/node_modules
-    ports:
-      - "8080:8080"
+      - ./frontend/app:/app
+    # ports:
+    #   - "8080:5173"
     environment:
       - VUE_APP_API_URL=http://backend:8000
     depends_on:
@@ -47,10 +47,10 @@ services:
     build: ./frontend-admin
     command: npm run dev
     volumes:
-      - ./frontend-admin/app:/app
       - /app/node_modules
-    ports:
-      - "8081:8081"
+      - ./frontend-admin/app:/app
+    # ports:
+    #   - "8081:5173"
     environment:
       - VUE_APP_API_URL=http://backend:8000
     depends_on:

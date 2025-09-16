@@ -1,12 +1,15 @@
-FROM node:16
+FROM node:22-alpine
 
 WORKDIR /app
 
 COPY app/package*.json ./
-RUN npm install
+COPY app/tsconfig*.json ./
+COPY app/vite*.ts ./
+
+RUN npm ci
 
 COPY app/ .
 
-EXPOSE 8080
+EXPOSE 5173
 
 CMD ["npm", "run", "dev"]
