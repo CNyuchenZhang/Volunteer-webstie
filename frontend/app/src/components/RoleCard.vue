@@ -1,6 +1,6 @@
 <template>
   <el-card class="role-card" @click="handleClick">
-    <p>{{ props.role }}</p>
+    <p>{{ role }}</p>
   </el-card>
 </template>
 
