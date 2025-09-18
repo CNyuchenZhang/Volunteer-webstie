@@ -4,7 +4,7 @@ WORKDIR /app
 
 COPY app/package*.json ./
 COPY app/tsconfig*.json ./
-COPY app/vite*.json ./
+COPY app/vite*.ts ./
 
 RUN npm ci --include dev
 

@@ -12,7 +12,7 @@
         </el-form-item>
 
         <el-form-item>
-          <el-button type="primary" @click="handleLogin">Login</el-button>
+          <el-button type="primary" @click="handleLogin" :loading="loading">Login</el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -24,12 +24,14 @@ import { defineComponent, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useAdminStore } from '../store/admin'
+import { loginUser } from '../api'
 
 export default defineComponent({
   setup() {
     const router = useRouter()
     const store = useAdminStore()
     const loginForm = ref<any>(null)
+    const loading = ref(false)
 
     // 表单数据
     const form = reactive({
@@ -62,21 +64,33 @@ export default defineComponent({
     ]
 
     // 登录处理
-    const handleLogin = () => {
-      loginForm.value.validate((valid: boolean) => {
+    const handleLogin = async () => {
+      try {
+        const valid = await loginForm.value.validate()
         if (!valid) return
-        // 测试账号
-        if (form.username === 'jn1016' && form.password === '123456789qwe') {
-          store.login(form.username)
-          ElMessage.success('登录成功')
-          router.push('/dashboard')
-        } else {
-          ElMessage.error('账号或密码错误，请重新输入')
-        }
-      })
+
+        loading.value = true
+        
+        // 调用API登录接口
+        const response = await loginUser({
+          username: form.username,
+          password: form.password
+        })
+        
+        // 登录成功
+        store.login(form.username)
+        ElMessage.success('登录成功')
+        router.push('/dashboard')
+        
+      } catch (error: any) {
+        console.error('Login error:', error)
+        ElMessage.error(error.message || '登录失败，请检查用户名和密码')
+      } finally {
+        loading.value = false
+      }
     }
 
-    return { form, loginForm, handleLogin, usernameRules, passwordRules }
+    return { form, loginForm, handleLogin, usernameRules, passwordRules, loading }
   }
 })
 </script>

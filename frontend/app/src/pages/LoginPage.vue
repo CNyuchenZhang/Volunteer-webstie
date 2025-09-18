@@ -46,8 +46,10 @@
             size="large" 
             native-type="submit"
             class="login-button"
+            :loading="loading"
+            :disabled="loading"
           >
-            登录Login
+            {{ loading ? '登录中...' : '登录Login' }}
           </el-button>
         </el-form-item>
 
@@ -82,10 +84,14 @@
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import sha256 from 'crypto-js/sha256'
+import { ElMessage } from 'element-plus'
 
 // 引入条款弹窗
 import TermsDialog from '../components/TermsDialog.vue'
 import PrivacyDialog from '../components/PrivacyDialog.vue'
+
+// 引入API
+import { loginUser } from '../api/index'
 
 const route = useRoute()
 const router = useRouter()
@@ -104,6 +110,7 @@ const username = ref('')
 const password = ref('')
 const acceptedTerms = ref(false)
 const error = ref('')
+const loading = ref(false)
 
 // 控制弹窗显示
 const showTerms = ref(false)
@@ -134,17 +141,50 @@ function validate() {
 }
 
 // 提交登录
-function submitLogin() {
+async function submitLogin() {
   if (!validate()) return
   
-  // 模拟加密
-  const hashedPassword = sha256(password.value).toString()
-  console.log(`Login as ${role}: username=${username.value}, password=${hashedPassword}`)
-
-  // 根据角色跳转到不同仪表盘
-  if (role === 'volunteer') router.push('/dashboard/volunteer')
-  else if (role === 'npo') router.push('/dashboard/npo')
-  else if (role === 'admin') router.push('/dashboard/admin')
+  loading.value = true
+  error.value = ''
+  
+  try {
+    // 加密密码
+    const hashedPassword = sha256(password.value).toString()
+    
+    // 调用登录API
+    const response = await loginUser({
+      username: username.value,
+      password: hashedPassword
+    })
+    
+    console.log('Login successful:', response)
+    ElMessage.success('登录成功！')
+    
+    // 保存用户信息到localStorage
+    localStorage.setItem('username', username.value)
+    localStorage.setItem('role', role)
+    
+    // 根据角色跳转到不同仪表盘
+    if (role === 'volunteer') router.push('/dashboard/volunteer')
+    else if (role === 'npo') router.push('/dashboard/npo')
+    else if (role === 'admin') router.push('/dashboard/admin')
+    
+  } catch (err: any) {
+    console.error('Login failed:', err)
+    
+    // 根据错误状态码显示不同错误信息
+    if (err.status === 401) {
+      error.value = '用户名或密码错误'
+    } else if (err.status === 400) {
+      error.value = '请求参数错误'
+    } else {
+      error.value = err.message || '登录失败，请稍后重试'
+    }
+    
+    ElMessage.error(error.value)
+  } finally {
+    loading.value = false
+  }
 }
 
 // 跳转注册页面

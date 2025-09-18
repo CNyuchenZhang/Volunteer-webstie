@@ -58,8 +58,10 @@
             size="large" 
             native-type="submit"
             class="register-button"
+            :loading="loading"
+            :disabled="loading"
           >
-            注册
+            {{ loading ? '注册中...' : '注册' }}
           </el-button>
         </el-form-item>
 
@@ -94,10 +96,14 @@
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import sha256 from 'crypto-js/sha256'
+import { ElMessage } from 'element-plus'
 
 // 引入条款弹窗
 import TermsDialog from '../components/TermsDialog.vue'
 import PrivacyDialog from '../components/PrivacyDialog.vue'
+
+// 引入API
+import { registerUser } from '../api/index'
 
 const route = useRoute()
 const router = useRouter()
@@ -117,6 +123,7 @@ const password = ref('')
 const confirmPassword = ref('')
 const acceptedTerms = ref(false)
 const error = ref('')
+const loading = ref(false)
 
 // 控制弹窗显示
 const showTerms = ref(false)
@@ -152,15 +159,47 @@ function validate() {
 }
 
 // 提交注册
-function submitRegister() {
+async function submitRegister() {
   if (!validate()) return
   
-  // 模拟加密
-  const hashedPassword = sha256(password.value).toString()
-  console.log(`Register as ${role}: username=${username.value}, password=${hashedPassword}`)
+  loading.value = true
+  error.value = ''
   
-  // 注册成功跳转登录
-  router.push({ name: 'login', params: { role } })
+  try {
+    // 加密密码
+    const hashedPassword = sha256(password.value).toString()
+    
+    // 调用注册API
+    const response = await registerUser({
+      username: username.value,
+      character: role, // 使用角色作为character字段
+      password: hashedPassword
+    })
+    
+    console.log('Register successful:', response)
+    ElMessage.success('注册成功！正在跳转到登录页面...')
+    
+    // 注册成功跳转登录
+    setTimeout(() => {
+      router.push({ name: 'login', params: { role } })
+    }, 1500)
+    
+  } catch (err: any) {
+    console.error('Register failed:', err)
+    
+    // 根据错误状态码显示不同错误信息
+    if (err.status === 409) {
+      error.value = '用户名已存在，请更换用户名'
+    } else if (err.status === 400) {
+      error.value = '请求参数错误，请检查输入信息'
+    } else {
+      error.value = err.message || '注册失败，请稍后重试'
+    }
+    
+    ElMessage.error(error.value)
+  } finally {
+    loading.value = false
+  }
 }
 
 // 跳转登录页面
