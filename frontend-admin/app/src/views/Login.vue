@@ -39,25 +39,63 @@ export default defineComponent({
       password: ''
     })
 
-    // 用户名校验规则：5-12位字母+数字
+    // 用户名校验规则：不超过20字符，只能包含字母、数字、_、@、+、.、-，至少一个字母
     const usernameRules = [
       {
         validator: (rule: any, value: string, callback: any) => {
-          const regex = /^[A-Za-z0-9]{5,12}$/
-          if (!regex.test(value)) callback(new Error('用户名必须为5-12位字母+数字'))
-          else callback()
+          if (value.length > 20) {
+            callback(new Error('用户名长度不能超过20个字符'))
+            return
+          }
+          
+          const regex = /^[a-zA-Z0-9_@+.-]+$/
+          if (!regex.test(value)) {
+            callback(new Error('用户名只能包含字母、数字、_、@、+、.、-这些字符'))
+            return
+          }
+          
+          const hasLetter = /[a-zA-Z]/.test(value)
+          if (!hasLetter) {
+            callback(new Error('用户名必须包含至少一个字母'))
+            return
+          }
+          
+          callback()
         },
         trigger: 'blur'
       }
     ]
 
-    // 密码校验规则：12位字母+数字
+    // 密码校验规则：至少8位，包含大小写字母、数字和特殊字符
     const passwordRules = [
       {
         validator: (rule: any, value: string, callback: any) => {
-          const regex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{12}$/
-          if (!regex.test(value)) callback(new Error('密码必须为12位字母+数字'))
-          else callback()
+          if (value.length < 8) {
+            callback(new Error('密码长度至少8位'))
+            return
+          }
+
+          if (!/[A-Z]/.test(value)) {
+            callback(new Error('密码必须包含至少一个大写字母'))
+            return
+          }
+
+          if (!/[a-z]/.test(value)) {
+            callback(new Error('密码必须包含至少一个小写字母'))
+            return
+          }
+
+          if (!/[0-9]/.test(value)) {
+            callback(new Error('密码必须包含至少一个数字'))
+            return
+          }
+
+          if (!/[!@#$%^&*(),.?":{}|<>]/.test(value)) {
+            callback(new Error('密码必须包含至少一个特殊字符 (!@#$%^&*(),.?":{}|<>)'))
+            return
+          }
+
+          callback()
         },
         trigger: 'blur'
       }

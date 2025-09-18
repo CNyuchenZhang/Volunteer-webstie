@@ -1,8 +1,18 @@
 import axios from 'axios'
+import type { 
+  RegisterRequest, 
+  LoginRequest, 
+  LoginResponse, 
+  RegisterResponse,
+  UsernameCheckRequest,
+  UsernameCheckResponse,
+  ApiError,
+  UserCharacter
+} from '../types/api'
 
-// 创建axios实例 - 使用实际的API服务器地址
+// 创建axios实例
 const api = axios.create({
-  baseURL: 'http://47.84.114.53:8000',
+  baseURL: 'http://localhost:8000/api',
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json'
@@ -12,8 +22,7 @@ const api = axios.create({
 // 请求拦截器
 api.interceptors.request.use(
   (config) => {
-    // 可以在这里添加认证token
-    const token = localStorage.getItem('token')
+    const token = localStorage.getItem('access_token')
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -31,70 +40,171 @@ api.interceptors.response.use(
   },
   (error) => {
     console.error('API Error:', error)
+    
+    // 如果是401错误，清除本地token
+    if (error.response?.status === 401) {
+      localStorage.removeItem('access_token')
+      localStorage.removeItem('refresh_token')
+      localStorage.removeItem('user_info')
+    }
+    
     return Promise.reject(error)
   }
 )
 
-// API接口定义
-export interface RegisterRequest {
-  username: string
-  character: string
-  password: string
-}
-
-export interface LoginRequest {
-  username: string
-  password: string
-}
-
-export interface LogoutRequest {
-  username: string
-}
-
-// 注册接口
-export const registerUser = async (data: RegisterRequest) => {
+// 志愿者注册
+export const registerVolunteer = async (data: RegisterRequest): Promise<RegisterResponse> => {
   try {
-    const response = await api.post('/register/', data)
+    // 确保Character为志愿者类型
+    const requestData = { ...data, Character: 1 }
+    const response = await api.post('/accounts/volunteerRegister/', requestData)
     return response.data
   } catch (error: any) {
     throw {
       status: error.response?.status,
-      message: error.response?.data?.message || error.message,
+      message: error.response?.data?.error || error.response?.data?.message || error.message,
       data: error.response?.data
-    }
+    } as ApiError
   }
 }
 
-// 登录接口 - 根据API文档，成功状态码是100
-export const loginUser = async (data: LoginRequest) => {
+// NPO注册
+export const registerNPO = async (data: RegisterRequest): Promise<RegisterResponse> => {
   try {
-    const response = await api.post('/login/', data)
-    // 根据API文档，登录成功返回状态码100
-    if (response.status === 100 || response.status === 200) {
-      return response.data
-    } else {
-      throw new Error('登录失败')
-    }
-  } catch (error: any) {
-    throw {
-      status: error.response?.status,
-      message: error.response?.data?.message || error.message,
-      data: error.response?.data
-    }
-  }
-}
-
-// 登出接口
-export const logoutUser = async (data: LogoutRequest) => {
-  try {
-    const response = await api.post('/logout/', data)
+    // 确保Character为NPO类型
+    const requestData = { ...data, Character: 2 }
+    const response = await api.post('/accounts/npoRegister/', requestData)
     return response.data
   } catch (error: any) {
     throw {
       status: error.response?.status,
-      message: error.response?.data?.message || error.message,
+      message: error.response?.data?.error || error.response?.data?.message || error.message,
       data: error.response?.data
+    } as ApiError
+  }
+}
+
+// 志愿者登录
+export const loginVolunteer = async (data: LoginRequest): Promise<LoginResponse> => {
+  try {
+    // 确保Character为志愿者类型
+    const requestData = { ...data, Character: 1 }
+    const response = await api.post('/accounts/volunteerLogin/', requestData)
+    
+    // 保存token到本地存储
+    if (response.data.access) {
+      localStorage.setItem('access_token', response.data.access)
+      localStorage.setItem('refresh_token', response.data.refresh)
+      localStorage.setItem('user_info', JSON.stringify(response.data.user))
     }
+    
+    return response.data
+  } catch (error: any) {
+    throw {
+      status: error.response?.status,
+      message: error.response?.data?.error || error.response?.data?.message || error.message,
+      data: error.response?.data
+    } as ApiError
+  }
+}
+
+// NPO登录
+export const loginNPO = async (data: LoginRequest): Promise<LoginResponse> => {
+  try {
+    // 确保Character为NPO类型
+    const requestData = { ...data, Character: 2 }
+    const response = await api.post('/accounts/npoLogin/', requestData)
+    
+    // 保存token到本地存储
+    if (response.data.access) {
+      localStorage.setItem('access_token', response.data.access)
+      localStorage.setItem('refresh_token', response.data.refresh)
+      localStorage.setItem('user_info', JSON.stringify(response.data.user))
+    }
+    
+    return response.data
+  } catch (error: any) {
+    throw {
+      status: error.response?.status,
+      message: error.response?.data?.error || error.response?.data?.message || error.message,
+      data: error.response?.data
+    } as ApiError
+  }
+}
+
+// 检查用户名是否可用
+export const checkUsernameAvailability = async (username: string): Promise<UsernameCheckResponse> => {
+  try {
+    const response = await api.get('/accounts/findUserByUsername/', {
+      params: { username }
+    })
+    return response.data
+  } catch (error: any) {
+    throw {
+      status: error.response?.status,
+      message: error.response?.data?.error || error.response?.data?.message || error.message,
+      data: error.response?.data
+    } as ApiError
+  }
+}
+
+// 登出（清除本地存储）
+export const logout = (): void => {
+  localStorage.removeItem('access_token')
+  localStorage.removeItem('refresh_token')
+  localStorage.removeItem('user_info')
+}
+
+// 获取当前用户信息（从本地存储）
+export const getCurrentUser = () => {
+  const userInfo = localStorage.getItem('user_info')
+  return userInfo ? JSON.parse(userInfo) : null
+}
+
+// 检查是否已登录
+export const isLoggedIn = (): boolean => {
+  return !!localStorage.getItem('access_token')
+}
+
+// 获取访问令牌
+export const getAccessToken = (): string | null => {
+  return localStorage.getItem('access_token')
+}
+
+// 获取刷新令牌
+export const getRefreshToken = (): string | null => {
+  return localStorage.getItem('refresh_token')
+}
+
+// 通用登录函数（根据用户类型自动选择接口）
+export const loginUser = async (data: LoginRequest): Promise<LoginResponse> => {
+  switch (data.Character) {
+    case 1:
+      return loginVolunteer(data)
+    case 2:
+      return loginNPO(data)
+    default:
+      throw {
+        status: 400,
+        message: '不支持的用户类型',
+        data: null
+      } as ApiError
+  }
+}
+
+// 通用注册函数（根据用户类型自动选择接口）
+export const registerUser = async (data: RegisterRequest): Promise<RegisterResponse> => {
+  switch (data.Character) {
+    case 1:
+      return registerVolunteer(data)
+    case 2:
+      return registerNPO(data)
+    default:
+      throw {
+        status: 400,
+        message: '不支持的用户类型',
+        data: null
+      } as ApiError
   }
 }
 

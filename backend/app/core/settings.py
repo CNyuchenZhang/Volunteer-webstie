@@ -87,16 +87,8 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'myproject',
-        'USER': 'myprojectuser',
-        'PASSWORD': 'myprojectpassword',
-        'HOST': 'postgres',
-        # 'NAME': 'postgres',  # 本地数据库连接test xjn
-        # 'USER': 'postgres',
-        # 'PASSWORD': '123456',
-        # 'HOST': '127.0.0.1',
-        'PORT': '5432',
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
 
@@ -157,6 +149,12 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # 解决数据库模型冲突（多个用户模型），指定自定义的用户模型
 AUTH_USER_MODEL = 'accounts.Account'
 
+# 自定义认证后端
+AUTHENTICATION_BACKENDS = [
+    'accounts.backends.SHA256AuthenticationBackend',
+    'django.contrib.auth.backends.ModelBackend',  # 保留默认认证作为备选
+]
+
 # 配置REST Framework
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
@@ -167,17 +165,45 @@ REST_FRAMEWORK = {
     ],
 }
 # 配置CORS允许前端访问
-# CORS_ALLOWED_ORIGINS = [
-#     "http://localhost:5173",  # Vue开发服务器默认端口
-#     "http://127.0.0.1:5173",
-#     "http://localhost:8080",
-#     "http://127.0.0.1:8080",
-#     "http://127.0.0.1:8081",
-#     "http://localhost:8081",
-#     "http://nginx:80"
-# ]
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",  # Vue开发服务器默认端口
+    "http://127.0.0.1:5173",
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+    "http://127.0.0.1:8081",
+    "http://localhost:8081",
+    "http://localhost:3000",  # 其他可能的前端端口
+    "http://127.0.0.1:3000",
+    "http://nginx:80"
+]
+
+# 允许所有来源（仅开发环境使用）
+CORS_ALLOW_ALL_ORIGINS = True
 
 # 允许携带Cookie
 CORS_ALLOW_CREDENTIALS = True
+
+# 允许的请求头
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
+# 允许的HTTP方法
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
 
 
