@@ -28,7 +28,6 @@ from .models import Account
 def volunteer_register(request):
     # 验证Character是否为volunteer
     Character = request.data.get('Character')
-    print(f"Received data: {request.data}")  # 调试日志
     if Character != 1:
         return Response({'error': 'Character Type wrong!'}, status=status.HTTP_400_BAD_REQUEST)
     serializer = AccountSerializer(data=request.data)
@@ -40,24 +39,12 @@ def volunteer_register(request):
             'refresh': str(refresh),
             'access': str(refresh.access_token),
         }, status=status.HTTP_201_CREATED)
-    print(f"Serializer errors: {serializer.errors}")  # 调试日志
-    
-    # 处理具体的验证错误
-    error_messages = []
-    for field, errors in serializer.errors.items():
-        if isinstance(errors, list):
-            error_messages.extend(errors)
-        else:
-            error_messages.append(str(errors))
-    
-    error_message = '; '.join(error_messages) if error_messages else '请求参数错误，请检查输入信息'
-    return Response({'error': error_message}, status=status.HTTP_400_BAD_REQUEST)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def npo_register(request):
     Character = request.data.get('Character')
-    print(f"Received data: {request.data}")  # 调试日志
     if Character != 2:
         return Response({'error': 'Character Type wrong!'}, status=status.HTTP_400_BAD_REQUEST)
     serializer = AccountSerializer(data=request.data)
@@ -69,18 +56,7 @@ def npo_register(request):
             'refresh': str(refresh),
             'access': str(refresh.access_token),
         }, status=status.HTTP_201_CREATED)
-    print(f"Serializer errors: {serializer.errors}")  # 调试日志
-    
-    # 处理具体的验证错误
-    error_messages = []
-    for field, errors in serializer.errors.items():
-        if isinstance(errors, list):
-            error_messages.extend(errors)
-        else:
-            error_messages.append(str(errors))
-    
-    error_message = '; '.join(error_messages) if error_messages else '请求参数错误，请检查输入信息'
-    return Response({'error': error_message}, status=status.HTTP_400_BAD_REQUEST)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 #
 #

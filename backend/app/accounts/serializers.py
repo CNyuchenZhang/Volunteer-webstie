@@ -5,14 +5,7 @@ import re
 class AccountSerializer(serializers.ModelSerializer):
     class Meta:
         model = Account
-        fields = ['id', 'username', 'password', 'Character', 'email', 'first_name', 'last_name', 'is_active', 'date_joined', 'last_login']
-        extra_kwargs = {
-            'password': {'write_only': True},
-            'id': {'read_only': True},
-            'date_joined': {'read_only': True},
-            'last_login': {'read_only': True},
-            'is_active': {'read_only': True}
-        }
+        fields = '__all__'
 
     def validate_Character(self, value):
         """验证用户类型"""
@@ -25,12 +18,7 @@ class AccountSerializer(serializers.ModelSerializer):
         return value
 
     def validate_password(self, value):
-        """验证密码复杂度 - 接受SHA256加密后的密码"""
-        # 如果是64位十六进制字符串，说明是SHA256加密后的密码，直接返回
-        if len(value) == 64 and all(c in '0123456789abcdef' for c in value.lower()):
-            return value
-            
-        # 如果是明文密码，进行复杂度验证
+        """验证密码复杂度"""
         if len(value) < 8:
             raise serializers.ValidationError("密码长度至少8位")
 
@@ -64,26 +52,13 @@ class AccountSerializer(serializers.ModelSerializer):
 
         return value
 
-    def validate_email(self, value):
-        """验证邮箱"""
-        if Account.objects.filter(email__iexact=value).exists():
-            raise serializers.ValidationError("该邮箱已被注册")
-        return value
-
     def create(self, validated_data):
         # 从验证后的数据中取出密码
         password = validated_data.pop('password')
         # 创建用户对象，不包括密码
         user = Account.objects.create(**validated_data)
-        
-        # 如果密码已经是SHA256加密的，直接存储；否则使用Django的加密方式
-        if len(password) == 64 and all(c in '0123456789abcdef' for c in password.lower()):
-            # 已经是SHA256加密的密码，直接设置
-            user.password = password
-        else:
-            # 明文密码，使用Django的加密方式
-            user.set_password(password)
-        
+        # 使用set_password方法加密密码
+        user.set_password(password)
         user.save()
         return user
 
