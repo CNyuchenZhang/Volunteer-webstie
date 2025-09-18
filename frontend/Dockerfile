@@ -6,7 +6,7 @@ COPY app/package*.json ./
 COPY app/tsconfig*.json ./
 COPY app/vite*.ts ./
 
-RUN npm ci
+RUN npm ci --include dev
 
 COPY app/ .
 

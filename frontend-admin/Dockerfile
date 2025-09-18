@@ -1,30 +1,15 @@
-# 多阶段构建 - 构建阶段
-FROM node:18-alpine AS build
+FROM node:22-alpine
 
 WORKDIR /app
 
-# 复制 package 文件
 COPY app/package*.json ./
+COPY app/tsconfig*.json ./
+COPY app/vite*.ts ./
 
-# 安装依赖
-RUN npm install
+RUN npm ci --include dev
 
-# 复制源代码
 COPY app/ .
 
-# 构建应用
-RUN npm run build
+EXPOSE 8081
 
-# 生产阶段 - 使用 nginx 服务静态文件
-FROM nginx:alpine
-
-# 复制构建产物到 nginx 目录
-COPY --from=build /app/dist /usr/share/nginx/html
-
-# 复制自定义 nginx 配置
-COPY app/nginx.conf /etc/nginx/conf.d/default.conf
-
-# 暴露端口
-EXPOSE 80
-
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["npm", "run", "dev"]

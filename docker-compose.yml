@@ -44,9 +44,7 @@ services:
       - app-network
 
   frontend-admin:
-    build:
-      context: ./frontend-admin
-      dockerfile: Dockerfile.dev
+    build: ./frontend-admin
     command: npm run dev
     volumes:
       - /app/node_modules
