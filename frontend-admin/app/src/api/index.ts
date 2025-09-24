@@ -1,8 +1,15 @@
 import axios from 'axios'
+import type { 
+  AdminLoginRequest,
+  LoginResponse, 
+  UsernameCheckRequest,
+  UsernameCheckResponse,
+  ApiError
+} from '../types/api'
 
-// 创建axios实例 - 使用实际的API服务器地址
+// 创建axios实例
 const api = axios.create({
-  baseURL: 'http://47.84.114.53:8000',
+  baseURL: 'http://localhost:8000/api',
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json'
@@ -12,8 +19,7 @@ const api = axios.create({
 // 请求拦截器
 api.interceptors.request.use(
   (config) => {
-    // 可以在这里添加认证token
-    const token = localStorage.getItem('token')
+    const token = localStorage.getItem('admin_access_token')
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -29,49 +35,86 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     console.error('API Error:', error)
+    
+    // 如果是401错误，清除本地token
+    if (error.response?.status === 401) {
+      localStorage.removeItem('admin_access_token')
+      localStorage.removeItem('admin_refresh_token')
+      localStorage.removeItem('admin_user_info')
+    }
+    
     return Promise.reject(error)
   }
 )
 
-// 接口类型定义
-export interface LoginRequest {
-  username: string
-  password: string
-}
-
-export interface LogoutRequest {
-  username: string
-}
-
-// 登录接口 - 管理员登录
-export const loginUser = async (data: LoginRequest) => {
+// 管理员登录
+export const loginAdmin = async (data: Omit<AdminLoginRequest, 'Character'>): Promise<LoginResponse> => {
   try {
-    const response = await api.post('/login/', data)
-    // 根据API文档，登录成功返回状态码100或200
-    if (response.status === 100 || response.status === 200) {
-      return response.data
-    } else {
-      throw new Error('登录失败')
+    const requestData = { ...data, Character: 0 } // 管理员类型为0
+    const response = await api.post('/accounts/adminLogin/', requestData)
+    
+    // 保存token到本地存储（使用admin前缀区分）
+    if (response.data.access) {
+      localStorage.setItem('admin_access_token', response.data.access)
+      localStorage.setItem('admin_refresh_token', response.data.refresh)
+      localStorage.setItem('admin_user_info', JSON.stringify(response.data.user))
     }
-  } catch (error: any) {
-    throw {
-      status: error.response?.status,
-      message: error.response?.data?.message || error.message,
-      data: error.response?.data
-    }
-  }
-}
-
-// 登出接口
-export const logoutUser = async (data: LogoutRequest) => {
-  try {
-    const response = await api.post('/logout/', data)
+    
     return response.data
   } catch (error: any) {
     throw {
       status: error.response?.status,
-      message: error.response?.data?.message || error.message,
+      message: error.response?.data?.error || error.response?.data?.message || error.message,
       data: error.response?.data
-    }
+    } as ApiError
   }
-} 
+}
+
+// 检查用户名是否可用
+export const checkUsernameAvailability = async (username: string): Promise<UsernameCheckResponse> => {
+  try {
+    const response = await api.get('/accounts/findUserByUsername/', {
+      params: { username }
+    })
+    return response.data
+  } catch (error: any) {
+    throw {
+      status: error.response?.status,
+      message: error.response?.data?.error || error.response?.data?.message || error.message,
+      data: error.response?.data
+    } as ApiError
+  }
+}
+
+// 管理员登出（清除本地存储）
+export const logout = (): void => {
+  localStorage.removeItem('admin_access_token')
+  localStorage.removeItem('admin_refresh_token')
+  localStorage.removeItem('admin_user_info')
+}
+
+// 获取当前管理员信息（从本地存储）
+export const getCurrentAdmin = () => {
+  const userInfo = localStorage.getItem('admin_user_info')
+  return userInfo ? JSON.parse(userInfo) : null
+}
+
+// 检查管理员是否已登录
+export const isLoggedIn = (): boolean => {
+  return !!localStorage.getItem('admin_access_token')
+}
+
+// 获取访问令牌
+export const getAccessToken = (): string | null => {
+  return localStorage.getItem('admin_access_token')
+}
+
+// 获取刷新令牌
+export const getRefreshToken = (): string | null => {
+  return localStorage.getItem('admin_refresh_token')
+}
+
+// 兼容旧的接口名称
+export const loginUser = loginAdmin
+
+export default api 

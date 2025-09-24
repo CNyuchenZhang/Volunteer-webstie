@@ -104,6 +104,7 @@ import PrivacyDialog from '../components/PrivacyDialog.vue'
 
 // 引入API
 import { registerUser } from '../api/index'
+import { UserCharacter } from '../types/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -131,16 +132,43 @@ const showPrivacy = ref(false)
 
 // 表单验证
 function validate() {
-  const usernameValid = /^[A-Za-z0-9]{5,12}$/.test(username.value)
-  const passwordValid = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{12}$/.test(password.value)
+  // 用户名验证：最大20字符，只能包含字母、数字、_、@、+、.、-，必须包含至少一个字母
+  const usernameValid = /^[a-zA-Z0-9_@+.-]{1,20}$/.test(username.value) && /[a-zA-Z]/.test(username.value)
+  
+  // 密码验证：至少8位，包含大写字母、小写字母、数字、特殊字符
+  const passwordValid = password.value.length >= 8 &&
+    /[A-Z]/.test(password.value) &&
+    /[a-z]/.test(password.value) &&
+    /[0-9]/.test(password.value) &&
+    /[!@#$%^&*(),.?":{}|<>]/.test(password.value)
   
   if (!usernameValid) {
-    error.value = '用户名必须为5-12位字母和数字组合'
+    if (username.value.length > 20) {
+      error.value = '用户名长度不能超过20个字符'
+    } else if (!/^[a-zA-Z0-9_@+.-]+$/.test(username.value)) {
+      error.value = '用户名只能包含字母、数字、_、@、+、.、-这些字符'
+    } else if (!/[a-zA-Z]/.test(username.value)) {
+      error.value = '用户名必须包含至少一个字母'
+    } else {
+      error.value = '用户名格式不正确'
+    }
     return false
   }
   
   if (!passwordValid) {
-    error.value = '密码必须为12位，包含字母和数字'
+    if (password.value.length < 8) {
+      error.value = '密码长度至少8位'
+    } else if (!/[A-Z]/.test(password.value)) {
+      error.value = '密码必须包含至少一个大写字母'
+    } else if (!/[a-z]/.test(password.value)) {
+      error.value = '密码必须包含至少一个小写字母'
+    } else if (!/[0-9]/.test(password.value)) {
+      error.value = '密码必须包含至少一个数字'
+    } else if (!/[!@#$%^&*(),.?":{}|<>]/.test(password.value)) {
+      error.value = '密码必须包含至少一个特殊字符 (!@#$%^&*(),.?":{}|<>)'
+    } else {
+      error.value = '密码格式不正确'
+    }
     return false
   }
   
@@ -169,10 +197,26 @@ async function submitRegister() {
     // 加密密码
     const hashedPassword = sha256(password.value).toString()
     
+    // 映射角色字符串到数字
+    let characterCode: UserCharacter
+    switch (role) {
+      case 'volunteer':
+        characterCode = UserCharacter.VOLUNTEER
+        break
+      case 'npo':
+        characterCode = UserCharacter.NPO
+        break
+      case 'admin':
+        characterCode = UserCharacter.ADMIN
+        break
+      default:
+        throw new Error('不支持的用户类型')
+    }
+    
     // 调用注册API
     const response = await registerUser({
       username: username.value,
-      character: role, // 使用角色作为character字段
+      Character: characterCode,
       password: hashedPassword
     })
     
@@ -191,7 +235,8 @@ async function submitRegister() {
     if (err.status === 409) {
       error.value = '用户名已存在，请更换用户名'
     } else if (err.status === 400) {
-      error.value = '请求参数错误，请检查输入信息'
+      // 使用后端返回的具体错误信息
+      error.value = err.message || '请求参数错误，请检查输入信息'
     } else {
       error.value = err.message || '注册失败，请稍后重试'
     }
