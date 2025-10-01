@@ -89,6 +89,8 @@ export const loginVolunteer = async (data: LoginRequest): Promise<LoginResponse>
   try {
     // 确保Character为志愿者类型
     const requestData = { ...data, Character: 1 }
+    
+    // 发送登录请求
     const response = await api.post('/accounts/volunteerLogin/', requestData)
     
     // 保存token到本地存储
@@ -113,6 +115,8 @@ export const loginNPO = async (data: LoginRequest): Promise<LoginResponse> => {
   try {
     // 确保Character为NPO类型
     const requestData = { ...data, Character: 2 }
+    
+    // 发送登录请求
     const response = await api.post('/accounts/npoLogin/', requestData)
     
     // 保存token到本地存储
@@ -208,4 +212,4 @@ export const registerUser = async (data: RegisterRequest): Promise<RegisterRespo
   }
 }
 
-export default api 
+export default api
