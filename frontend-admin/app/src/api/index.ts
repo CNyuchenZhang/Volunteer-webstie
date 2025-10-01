@@ -51,7 +51,7 @@ api.interceptors.response.use(
 export const loginAdmin = async (data: Omit<AdminLoginRequest, 'Character'>): Promise<LoginResponse> => {
   try {
     const requestData = { ...data, Character: 0 } // 管理员类型为0
-    const response = await api.post('/accounts/adminLogin/', requestData)
+    const response = await api.post('/account/adminLogin/', requestData)
     
     // 保存token到本地存储（使用admin前缀区分）
     if (response.data.access) {
@@ -73,7 +73,7 @@ export const loginAdmin = async (data: Omit<AdminLoginRequest, 'Character'>): Pr
 // 检查用户名是否可用
 export const checkUsernameAvailability = async (username: string): Promise<UsernameCheckResponse> => {
   try {
-    const response = await api.get('/accounts/findUserByUsername/', {
+    const response = await api.get('/account/findUserByUsername/', {
       params: { username }
     })
     return response.data

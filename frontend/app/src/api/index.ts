@@ -57,7 +57,7 @@ export const registerVolunteer = async (data: RegisterRequest): Promise<Register
   try {
     // 确保Character为志愿者类型
     const requestData = { ...data, Character: 1 }
-    const response = await api.post('/accounts/volunteerRegister/', requestData)
+    const response = await api.post('/account/volunteerRegister/', requestData)
     return response.data
   } catch (error: any) {
     throw {
@@ -73,7 +73,7 @@ export const registerNPO = async (data: RegisterRequest): Promise<RegisterRespon
   try {
     // 确保Character为NPO类型
     const requestData = { ...data, Character: 2 }
-    const response = await api.post('/accounts/npoRegister/', requestData)
+    const response = await api.post('/account/npoRegister/', requestData)
     return response.data
   } catch (error: any) {
     throw {
@@ -91,7 +91,7 @@ export const loginVolunteer = async (data: LoginRequest): Promise<LoginResponse>
     const requestData = { ...data, Character: 1 }
     
     // 发送登录请求
-    const response = await api.post('/accounts/volunteerLogin/', requestData)
+    const response = await api.post('/account/volunteerLogin/', requestData)
     
     // 保存token到本地存储
     if (response.data.access) {
@@ -117,7 +117,7 @@ export const loginNPO = async (data: LoginRequest): Promise<LoginResponse> => {
     const requestData = { ...data, Character: 2 }
     
     // 发送登录请求
-    const response = await api.post('/accounts/npoLogin/', requestData)
+    const response = await api.post('/account/npoLogin/', requestData)
     
     // 保存token到本地存储
     if (response.data.access) {
@@ -139,7 +139,7 @@ export const loginNPO = async (data: LoginRequest): Promise<LoginResponse> => {
 // 检查用户名是否可用
 export const checkUsernameAvailability = async (username: string): Promise<UsernameCheckResponse> => {
   try {
-    const response = await api.get('/accounts/findUserByUsername/', {
+    const response = await api.get('/account/findUserByUsername/', {
       params: { username }
     })
     return response.data
