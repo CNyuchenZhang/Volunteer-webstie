@@ -1,0 +1,17 @@
+.el-button--primary {
+    --el-button-bg-color: #007bbd;
+    --el-button-border-color: #007bbd;
+    --el-button-hover-bg-color: #068ed7;
+    --el-button-hover-border-color: #068ed7;
+}
+
+.el-date-editor {
+    --el-input-focus-border-color: #007bbd;
+}
+
+.el-menu--horizontal.el-menu {
+    border: none;
+}
+.el-input {
+    --el-input-focus-border-color: #007bbd;
+}

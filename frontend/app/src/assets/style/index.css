@@ -1,0 +1,97 @@
+@import './element-plus.css';
+
+/* 自定义样式 */
+
+/* flex 布局 */
+.flex {
+    display: flex;
+}
+.flex-center {
+    justify-content: center;
+    align-items: center;
+}
+.flex-end {
+    justify-content: flex-end;
+}
+.flex-between {
+    justify-content: space-between;
+}
+.flex-around {
+    justify-content: space-around;
+}
+.flex-wrap {
+    flex-wrap: wrap;
+}
+.flex-1 {
+    flex: 1;
+}
+.flex-2 {
+    flex: 2;
+}
+
+/* 间距 */
+.mr-8 {
+    margin-right: 8px;
+}
+.mr-12 {
+    margin-right: 12px;
+}
+.mr-16 {
+    margin-right: 16px;
+}
+.mr-24 {
+    margin-right: 24px;
+}
+.ml-8 {
+    margin-left: 8px;
+}
+.ml-12 {
+    margin-left: 12px;
+}
+.ml-16 {
+    margin-left: 16px;
+}
+.ml-24 {
+    margin-left: 24px;
+}
+
+/* 内边距 */
+.p-4 {
+    padding: 4px;
+}
+.p-8 {
+    padding: 8px;
+}
+.p-12 {
+    padding: 12px;
+}
+.p-16 {
+    padding: 16px;
+}
+.pb-4 {
+    padding-bottom: 4px;
+}
+.pt-8 {
+    padding-top: 8px;
+}
+.pt-12 {
+    padding-top: 12px;
+}
+.pt-16 {
+    padding-top: 16px;
+}
+.pt-24 {
+    padding-top: 24px;
+}
+.pb-8 {
+    padding-bottom: 8px;
+}
+.pb-12 {
+    padding-bottom: 12px;
+}
+.pb-16 {
+    padding-bottom: 16px;
+}
+.pb-24 {
+    padding-bottom: 24px;
+}
