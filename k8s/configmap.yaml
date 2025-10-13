@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: volunteer-config
+  namespace: volunteer-platform
+data:
+  # Database configuration
+  DB_HOST: "postgres-service"
+  DB_PORT: "5432"
+  DB_USER: "postgres"
+  DB_PASSWORD: "password"
+  
+  # Redis configuration
+  REDIS_URL: "redis://redis-service:6379"
+  
+  # RabbitMQ configuration
+  RABBITMQ_URL: "amqp://admin:password@rabbitmq-service:5672"
+  
+  # MongoDB configuration
+  MONGODB_URL: "mongodb://admin:password@mongodb-service:27017"
+  
+  # Service URLs
+  USER_SERVICE_URL: "http://user-service:8000"
+  ACTIVITY_SERVICE_URL: "http://activity-service:8000"
+  NOTIFICATION_SERVICE_URL: "http://notification-service:8000"
+  PAYMENT_SERVICE_URL: "http://payment-service:8000"
+  ANALYTICS_SERVICE_URL: "http://analytics-service:8000"
+  RECOMMENDATION_SERVICE_URL: "http://recommendation-service:8000"
+  
+  # Environment
+  DEBUG: "False"
+  ALLOWED_HOSTS: "volunteer-platform.com,*.volunteer-platform.com"

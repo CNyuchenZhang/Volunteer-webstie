@@ -1,82 +1,166 @@
 version: '3.8'
 
 services:
+  # Database Services
   postgres:
     image: postgres:13
     environment:
-      POSTGRES_DB: myproject
-      POSTGRES_USER: myprojectuser
-      POSTGRES_PASSWORD: myprojectpassword
+      POSTGRES_DB: volunteer_platform
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
     volumes:
-      - postgres_data:/var/lib/postgresql/data/
+      - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     networks:
-      - app-network
+      - volunteer-network
 
-  backend:
-    build: ./backend
-    command: python manage.py runserver 0.0.0.0:8000
-    volumes:
-      - ./backend/app:/app
+  # Backend Services
+  user-service:
+    image: localhost:5000/volunteer-platform/user-service
+    build: ./services/user
     ports:
-      - "8000:8000"
+      - "8001:8000"
     environment:
-      - DATABASE_URL=postgres://myprojectuser:myprojectpassword@postgres:5432/myproject
+      - DEBUG=True
+      - DB_HOST=postgres
+      - DB_NAME=volunteer_user
+      - DB_USER=postgres
+      - DB_PASSWORD=password
     depends_on:
       - postgres
-    networks:
-      - app-network
-
-  frontend:
-    build: ./frontend
-    command: npm run dev
     volumes:
-      - /app/node_modules
-      - ./frontend/app:/app
-    # ports:
-    #   - "8080:8080"
-    environment:
-      - VUE_APP_API_URL=http://backend:8000
-    depends_on:
-      - backend
+      - ./services/user:/app
     networks:
-      - app-network
+      - volunteer-network
 
-  frontend-admin:
-    build: ./frontend-admin
-    command: npm run dev
-    volumes:
-      - /app/node_modules
-      - ./frontend-admin/app:/app
-    # ports:
-    #   - "8081:8081"
-    environment:
-      - VUE_APP_API_URL=http://backend:8000
-    depends_on:
-      - backend
-    networks:
-      - app-network
-
-  nginx:
-    image: nginx:alpine
+  activity-service:
+    image: localhost:5000/volunteer-platform/activity-service
+    build: ./services/activity
     ports:
-      - "80:80"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
-      # - ./frontend/dist:/usr/share/nginx/html/main  # 主前端静态文件
-      # - ./frontend-admin/dist:/usr/share/nginx/html/admin # 管理后台静态文件
+      - "8002:8000"
+    environment:
+      - DEBUG=True
+      - DB_HOST=postgres
+      - DB_NAME=volunteer_activity
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - USER_SERVICE_URL=http://user-service:8000
+      - NOTIFICATION_SERVICE_URL=http://notification-service:8000
     depends_on:
-      - frontend
-      - frontend-admin
-      - backend
-    restart: unless-stopped
+      - postgres
+    volumes:
+      - ./services/activity:/app
     networks:
-      - app-network
+      - volunteer-network
+
+  notification-service:
+    image: localhost:5000/volunteer-platform/notification-service
+    build: ./services/notification
+    ports:
+      - "8003:8000"
+    environment:
+      - DEBUG=True
+      - DB_HOST=postgres
+      - DB_NAME=volunteer_notification
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+    depends_on:
+      - postgres
+    volumes:
+      - ./services/notification:/app
+    networks:
+      - volunteer-network
+
+  payment-service:
+    image: localhost:5000/volunteer-platform/payment-service
+    build: ./services/payment
+    ports:
+      - "8004:8000"
+    environment:
+      - DEBUG=True
+      - DB_HOST=postgres
+      - DB_NAME=volunteer_payment
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+    depends_on:
+      - postgres
+    volumes:
+      - ./services/payment:/app
+    networks:
+      - volunteer-network
+
+  analytics-service:
+    image: localhost:5000/volunteer-platform/analytics-service
+    build: ./services/analytics
+    ports:
+      - "8005:8000"
+    environment:
+      - DEBUG=True
+      - DB_HOST=postgres
+      - DB_NAME=volunteer_analytics
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+    depends_on:
+      - postgres
+    volumes:
+      - ./services/analytics:/app
+    networks:
+      - volunteer-network
+
+  recommendation-service:
+    image: localhost:5000/volunteer-platform/recommendation-service
+    build: ./services/recommendation
+    ports:
+      - "8006:8000"
+    environment:
+      - DEBUG=True
+      - DB_HOST=postgres
+      - DB_NAME=volunteer_recommendation
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+    depends_on:
+      - postgres
+    volumes:
+      - ./services/recommendation:/app
+    networks:
+      - volunteer-network
+
+  # Frontend
+  frontend:
+    image: localhost:5000/volunteer-platform/frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - volunteer-network
+
+  # Frontend-admin
+  frontend-admin:
+    image: localhost:5000/volunteer-platform/frontend-admin
+    build:
+      context: ./frontend-admin
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8080"
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+    volumes:
+      - ./frontend-admin:/app
+      - /app/node_modules
+    networks:
+      - volunteer-network
 
 volumes:
   postgres_data:
 
 networks:
-  app-network:
+  volunteer-network:
     driver: bridge

@@ -1,0 +1,251 @@
+#!/bin/bash
+
+# Volunteer Platform Kubernetes 部署脚本
+# 使用方法: ./deploy.sh [环境] [操作]
+# 环境: dev, staging, prod
+# 操作: deploy, delete, update
+
+set -e
+
+ENVIRONMENT=${1:-dev}
+OPERATION=${2:-deploy}
+NAMESPACE="volunteer-platform"
+
+echo "🚀 开始部署 Volunteer Platform"
+echo "环境: $ENVIRONMENT"
+echo "操作: $OPERATION"
+echo "命名空间: $NAMESPACE"
+
+# 检查 kubectl 是否可用
+if ! command -v kubectl &> /dev/null; then
+    echo "❌ kubectl 未安装或不在 PATH 中"
+    exit 1
+fi
+
+# 检查集群连接
+kubectl cluster-info &> /dev/null
+CLUSTER_STATUS=$?
+
+if [ $CLUSTER_STATUS -eq 0 ]; then
+    echo "✅ Kubernetes 集群连接正常"
+else
+    echo "❌ 无法连接到 Kubernetes 集群 (退出码: $CLUSTER_STATUS)"
+    exit 1
+fi
+
+echo "✅ Kubernetes 集群连接正常"
+
+# 创建命名空间
+create_namespace() {
+    echo "📦 创建命名空间..."
+    kubectl apply -f namespace.yaml
+}
+
+# 创建 ConfigMap 和 Secrets
+create_config() {
+    echo "⚙️  创建配置..."
+    kubectl apply -f configmap.yaml
+    kubectl apply -f secrets.yaml
+}
+
+# 创建数据库服务
+deploy_databases() {
+    echo "🗄️  部署数据库服务..."
+    kubectl apply -f postgres-deployment.yaml
+}
+
+# 部署微服务
+deploy_microservices() {
+    echo "🔧 部署微服务..."
+    kubectl apply -f microservices-deployments.yaml
+    kubectl apply -f microservices-services.yaml
+}
+
+# 部署 nginx 网关
+deploy_gateway() {
+    echo "🌐 部署 nginx 网关..."
+    kubectl apply -f nginx-deployment.yaml
+}
+
+# 部署 Ingress
+deploy_ingress() {
+    echo "🚪 部署 Ingress..."
+    kubectl apply -f ingress.yaml
+}
+
+# 等待部署完成
+wait_for_deployment() {
+    echo "⏳ 等待部署完成..."
+    
+    deployments=(
+        "user-service"
+        "activity-service"
+        "notification-service"
+        "payment-service"
+        "analytics-service"
+        "recommendation-service"
+        "frontend"
+        "frontend-admin"
+        "postgres"
+        "nginx-gateway"
+    )
+    
+    for deployment in "${deployments[@]}"; do
+        echo "等待 $deployment 就绪..."
+        kubectl wait --for=condition=available --timeout=300s deployment/$deployment -n $NAMESPACE
+    done
+}
+
+# 检查服务状态
+check_status() {
+    echo "📊 检查服务状态..."
+    
+    echo "=== Pods ==="
+    kubectl get pods -n $NAMESPACE
+    
+    echo "=== Services ==="
+    kubectl get services -n $NAMESPACE
+    
+    echo "=== Ingress ==="
+    kubectl get ingress -n $NAMESPACE
+    
+    echo "=== ConfigMaps ==="
+    kubectl get configmaps -n $NAMESPACE
+
+    echo "=== Secrets ==="
+    kubectl get secrets -n $NAMESPACE
+
+    echo "=== Deployments ==="
+    kubectl get deployments -n $NAMESPACE
+
+    echo "=== PersistentVolumeClaims ==="
+    kubectl get pvc -n $NAMESPACE
+    
+    echo "=== PersistentVolumes ==="
+    kubectl get pv | grep $NAMESPACE
+    
+    # 检查 PVC 的详细状态
+    echo "=== PVC 详细信息 ==="
+    kubectl describe pvc postgres-pvc -n $NAMESPACE | grep -E "Status:|Capacity:|Access Modes:"
+}
+
+# 获取访问信息
+get_access_info() {
+    echo "🔗 获取访问信息..."
+    
+    # 获取 Ingress 信息
+    echo "=== Ingress 访问地址 ==="
+    kubectl get ingress -n $NAMESPACE -o wide
+    
+    # 获取 NodePort 信息
+    echo "=== NodePort 访问地址 ==="
+    kubectl get service nginx-gateway-nodeport -n $NAMESPACE -o wide
+    
+    # 获取集群 IP
+    CLUSTER_IP=$(kubectl get service nginx-gateway-service -n $NAMESPACE -o jsonpath='{.spec.clusterIP}')
+    echo "=== 集群内访问地址 ==="
+    echo "http://$CLUSTER_IP"
+}
+
+# 删除部署
+delete_deployment() {
+    echo "🗑️  开始删除部署..."
+    
+    echo "1/9 删除 Ingress..."
+    kubectl delete -f ingress.yaml --ignore-not-found=true
+    
+    echo "2/9 删除 Nginx 网关..."
+    kubectl delete -f nginx-deployment.yaml --ignore-not-found=true
+    
+    echo "3/9 删除微服务..."
+    if kubectl get services -n $NAMESPACE 2>/dev/null | grep -q .; then
+        kubectl delete -f microservices-services.yaml --ignore-not-found=true
+        echo "等待服务删除完成..."
+        kubectl wait --for=delete --all services --timeout=30s -n $NAMESPACE 2>/dev/null || true
+    fi
+    
+    echo "4/9 删除微服务部署..."
+    if kubectl get deployments -n $NAMESPACE 2>/dev/null | grep -q .; then
+        kubectl delete -f microservices-deployments.yaml --ignore-not-found=true
+        echo "等待 Pod 删除完成..."
+        kubectl wait --for=delete --all pods --timeout=60s -n $NAMESPACE 2>/dev/null || true
+    fi
+
+    echo "5/9 删除 Postgres 资源..."
+    if kubectl get deployments -n $NAMESPACE | grep -q postgres; then
+        echo "删除 Postgres 部署和服务..."
+        kubectl delete -f postgres-deployment.yaml --ignore-not-found=true
+        echo "等待 Postgres Pod 删除完成..."
+        kubectl wait --for=delete deployment/postgres --timeout=60s -n $NAMESPACE 2>/dev/null || true
+    fi
+    
+    echo "6/9 删除持久卷声明..."
+    if kubectl get pvc -n $NAMESPACE 2>/dev/null | grep -q .; then
+        kubectl delete pvc --all -n $NAMESPACE
+        echo "等待 PVC 删除完成..."
+        kubectl wait --for=delete --all pvc --timeout=60s -n $NAMESPACE 2>/dev/null || true
+    fi
+
+    # 可选：删除持久卷（如果需要完全清理）
+    echo "删除持久卷..."
+    kubectl delete pv postgres-pv --ignore-not-found=true
+    
+    echo "7/9 删除配置映射..."
+    kubectl delete -f configmap.yaml --ignore-not-found=true
+    
+    echo "8/9 删除密钥..."
+    kubectl delete -f secrets.yaml --ignore-not-found=true
+    
+    echo "9/9 删除命名空间..."
+    kubectl delete -f namespace.yaml --ignore-not-found=true
+    
+    echo "删除部署完成"
+}
+
+# 更新部署
+update_deployment() {
+    echo "🔄 更新部署..."
+    
+    kubectl apply -f configmap.yaml
+    kubectl apply -f secrets.yaml
+    kubectl apply -f microservices-deployments.yaml
+    kubectl apply -f nginx-deployment.yaml
+    kubectl apply -f ingress.yaml
+    
+    echo "⏳ 等待更新完成..."
+    wait_for_deployment
+}
+
+# 主逻辑
+case $OPERATION in
+    "deploy")
+        create_namespace
+        create_config
+        deploy_databases
+        deploy_microservices
+        deploy_gateway
+        deploy_ingress
+        wait_for_deployment
+        check_status
+        get_access_info
+        echo "✅ 部署完成！"
+        ;;
+    "delete")
+        delete_deployment
+        ;;
+    "update")
+        update_deployment
+        check_status
+        echo "✅ 更新完成！"
+        ;;
+    "status")
+        check_status
+        ;;
+    *)
+        echo "❌ 未知操作: $OPERATION"
+        echo "可用操作: deploy, delete, update, status"
+        exit 1
+        ;;
+esac
+
+echo "🎉 操作完成！"

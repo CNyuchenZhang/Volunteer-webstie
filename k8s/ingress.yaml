@@ -1,0 +1,92 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: volunteer-platform-ingress
+  namespace: volunteer-platform
+  annotations:
+    # 如果使用 nginx-ingress-controller
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
+    
+    # 限流配置
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+    
+    # 超时配置
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "5"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "10"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "30"
+    
+    # 客户端最大请求体大小
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    
+    # 安全头
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      add_header X-Frame-Options "SAMEORIGIN" always;
+      add_header X-Content-Type-Options "nosniff" always;
+      add_header X-XSS-Protection "1; mode=block" always;
+    
+    # 如果使用 cert-manager 进行 SSL
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  # 如果使用 SSL，取消注释以下部分
+  # tls:
+  # - hosts:
+  #   - volunteer-platform.com
+  #   - *.volunteer-platform.com
+  #   secretName: volunteer-platform-tls
+  
+  rules:
+  # 生产环境域名
+  - host: volunteer-platform.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: nginx-gateway-service
+            port:
+              number: 80
+              
+  # 开发环境或本地测试
+  - host: localhost
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: nginx-gateway-service
+            port:
+              number: 80
+              
+  # 通配符域名支持
+  - host: "*.volunteer-platform.com"
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: nginx-gateway-service
+            port:
+              number: 80
+
+---
+# 如果使用 NodePort 方式暴露服务（用于测试）
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-gateway-nodeport
+  namespace: volunteer-platform
+spec:
+  type: NodePort
+  selector:
+    app: nginx-gateway
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80
+    nodePort: 30080  # 可以通过 <node-ip>:30080 访问

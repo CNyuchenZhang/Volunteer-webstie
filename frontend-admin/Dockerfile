@@ -10,6 +10,6 @@ RUN npm ci --include dev
 
 COPY app/ .
 
-EXPOSE 8081
+EXPOSE 8080
 
 CMD ["npm", "run", "dev"]
