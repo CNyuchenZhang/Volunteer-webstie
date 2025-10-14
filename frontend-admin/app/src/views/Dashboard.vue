@@ -1,71 +1,115 @@
 <template>
-  <div class="dashboard-container">
-    <el-header>
-      <div class="header-left">Admin Dashboard</div>
-      <div class="header-right">
-        <el-button type="danger" @click="handleLogout">Logout</el-button>
+  <div class="dashboard-page">
+    <!-- 面包屑 -->
+    <el-breadcrumb>
+      <el-breadcrumb-item>Dashboard</el-breadcrumb-item>
+    </el-breadcrumb>
+    <div class="dashboard-content">
+      <div class="menu">
+        <div class="logo">
+          <img src="../assets/images/Logo/logo2.svg" alt="logo">
+        </div>
+        <el-menu
+          @select="handleSelect"
+        >
+          <el-menu-item v-for="item in menuItems" :key="item.index" :index="item.index">
+            {{ item.title }}
+          </el-menu-item>
+        </el-menu>
       </div>
-    </el-header>
-
-    <el-main>
-      <h3>Welcome, {{ username }}</h3>
-      <p>Dashboard 功能将在后续开发</p>
-    </el-main>
+      <div class="banner">
+        <el-carousel>
+          <el-carousel-item>
+            <img src="../assets/images/home_banner/l1.jpg" alt="">
+          </el-carousel-item>
+          <el-carousel-item>
+            <img src="../assets/images/home_banner/l2.jpg" alt="">
+          </el-carousel-item>
+          <el-carousel-item>
+            <img src="../assets/images/home_banner/l3.jpg" alt="">
+          </el-carousel-item>
+          <el-carousel-item>
+            <img src="../assets/images/home_banner/l4.jpg" alt="">
+          </el-carousel-item>
+          <el-carousel-item>
+            <img src="../assets/images/home_banner/l5.jpg" alt="">
+          </el-carousel-item>
+          <el-carousel-item>
+            <img src="../assets/images/home_banner/l6.jpg" alt="">
+          </el-carousel-item>
+          <el-carousel-item>
+            <img src="../assets/images/home_banner/l7.jpg" alt="">
+          </el-carousel-item>
+          <el-carousel-item>
+            <img src="../assets/images/home_banner/l8.jpg" alt="">
+          </el-carousel-item>
+        </el-carousel>
+      </div>
+    </div>
   </div>
 </template>
+<script setup lang="ts">
+import { ref } from 'vue'
 
-<script lang="ts">
-import { defineComponent } from 'vue'
-import { useRouter } from 'vue-router'
-import { ElMessageBox, ElMessage } from 'element-plus'
-import { useAdminStore } from '../store/admin'
+import { useRouter, useRoute } from 'vue-router'
 
-export default defineComponent({
-  setup() {
-    const router = useRouter()
-    const store = useAdminStore()
-    const username = store.username
+const router = useRouter()
+const route = useRoute()
+const role = route.params.role as string
 
-    // 登出处理
-    const handleLogout = () => {
-      ElMessageBox.confirm('是否确认登出?', '提示', {
-        confirmButtonText: '是',
-        cancelButtonText: '否',
-        type: 'warning'
-      })
-        .then(() => {
-          store.logout()
-          ElMessage.success('已登出')
-          router.push('/login')
-        })
-        .catch(() => {
-          // 取消登出，不做操作
-        })
-    }
 
-    return { username, handleLogout }
-  }
-})
+const menuItems = ref([
+  { title: `Volunteer UP Background `, index: '/background' },
+  { title: `Volunteer UP Rules `, index: '/rules' },
+  { title: `Volunteer UP Certificate `, index: '/certificate' },
+])
+
+const handleSelect = (index: string) => {
+  router.push(index)
+}
 </script>
-
 <style scoped>
-.dashboard-container {
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
+.dashboard-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 0;
 }
-
-.el-header {
+.dashboard-content {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background-color: #409EFF;
-  color: white;
-  padding: 0 20px;
+  margin-top: 24px;
 }
-
-.el-main {
+.dashboard-content .menu {
+  margin-right: 24px;
+  width: 400px;
+  background-color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+.dashboard-content .menu .logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.dashboard-content .menu :deep(.el-menu) {
+  border-right: 0;
+}
+.dashboard-content .banner {
   flex: 1;
-  padding: 20px;
+  background-color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+.dashboard-content .banner :deep(.el-carousel) {
+  height: 100%;
+}
+.dashboard-content .banner :deep(.el-carousel__container) {
+  height: 100%;
+}
+.dashboard-content .banner :deep(.el-carousel__item img) {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 </style>

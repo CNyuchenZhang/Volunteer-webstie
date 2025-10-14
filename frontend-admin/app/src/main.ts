@@ -11,6 +11,8 @@ import { createPinia } from 'pinia'
 import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
 
+import './assets/style/index.css'
+
 // 创建 Vue 实例
 const app = createApp(App)
 

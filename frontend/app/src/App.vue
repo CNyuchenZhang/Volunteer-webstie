@@ -13,10 +13,13 @@
 // 这里可以添加全局逻辑
 </script>
 
-<style scoped>
+<style>
 #app {
   min-height: 100vh;
-  background-color: #f5f5f5;
+  background-color: #f6f7f9;
   font-family: Arial, sans-serif;
+}
+body {
+  margin: 0;
 }
 </style>
