@@ -5,10 +5,9 @@ metadata:
   namespace: volunteer-platform
 data:
   # Database configuration
-  DB_HOST: "postgres-service"
+  DB_HOST: "postgres"
   DB_PORT: "5432"
   DB_USER: "postgres"
-  DB_PASSWORD: "password"
   
   # Redis configuration
   REDIS_URL: "redis://redis-service:6379"
