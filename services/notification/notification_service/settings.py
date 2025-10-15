@@ -61,15 +61,17 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'notification_service.wsgi.application'
 
-# Database
+# 数据库配置（适配 K8s 集群中的 PostgreSQL）
+# - Service 名称为 postgres（见 k8s/postgres-deployment.yaml）
+# - 优先读取 DB_* 环境变量；兼容 POSTGRES_* 命名；默认库名 volunteer_db
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('POSTGRES_DB', 'volunteer_platform'),
-        'USER': os.getenv('POSTGRES_USER', 'postgres'),
-        'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'password'),
-        'HOST': os.getenv('POSTGRES_HOST', 'postgres'),
-        'PORT': os.getenv('POSTGRES_PORT', '5432'),
+        'NAME': os.getenv('DB_NAME', os.getenv('POSTGRES_DB', 'volunteer_db')),
+        'USER': os.getenv('DB_USER', os.getenv('POSTGRES_USER', 'postgres')),
+        'PASSWORD': os.getenv('DB_PASSWORD', os.getenv('POSTGRES_PASSWORD', 'password')),
+        'HOST': os.getenv('DB_HOST', os.getenv('POSTGRES_HOST', 'postgres')),
+        'PORT': os.getenv('DB_PORT', os.getenv('POSTGRES_PORT', '5432')),
     }
 }
 
