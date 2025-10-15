@@ -13,6 +13,11 @@ docker-compose push
 # 检查镜像是否成功推送到本地仓库
 curl http://localhost:5000/v2/volunteer-platform/user-service/tags/list
 
+# 使用 minikube image load（把本地 image 导入到 minikube）
+docker pull localhost:5000/volunteer-platform/user-service:latest   # 如果在本地 registry
+minikube image load localhost:5000/volunteer-platform/user-service:latest
+kubectl apply -f k8s/microservices-deployments.yaml
+
 # 重新部署服务
 kubectl delete -f microservices-deployments.yaml
 kubectl apply -f microservices-deployments.yaml

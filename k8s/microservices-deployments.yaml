@@ -508,13 +508,13 @@ spec:
             cpu: "200m"
         livenessProbe:
           httpGet:
-            path: /
+            path: /health
             port: 8080
           initialDelaySeconds: 30
           periodSeconds: 10
         readinessProbe:
           httpGet:
-            path: /
+            path: /health
             port: 8080
           initialDelaySeconds: 5
           periodSeconds: 5
@@ -555,13 +555,13 @@ spec:
             cpu: "200m"
         livenessProbe:
           httpGet:
-            path: /admin
+            path: /health
             port: 8080
           initialDelaySeconds: 30
           periodSeconds: 10
         readinessProbe:
           httpGet:
-            path: /admin
+            path: /health
             port: 8080
           initialDelaySeconds: 5
           periodSeconds: 5

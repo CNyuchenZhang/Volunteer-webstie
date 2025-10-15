@@ -11,29 +11,34 @@ ENVIRONMENT=${1:-dev}
 OPERATION=${2:-deploy}
 NAMESPACE="volunteer-platform"
 
-echo "🚀 开始部署 Volunteer Platform"
+echo "🚀 开始执行 Volunteer Platform"
 echo "环境: $ENVIRONMENT"
 echo "操作: $OPERATION"
 echo "命名空间: $NAMESPACE"
 
 # 检查 kubectl 是否可用
+echo "🔍 检查 kubectl 是否可用..."
 if ! command -v kubectl &> /dev/null; then
     echo "❌ kubectl 未安装或不在 PATH 中"
     exit 1
+else
+    set +e
+    echo "✅ kubectl 可用"
+    set -e
 fi
 
 # 检查集群连接
+set +e
 kubectl cluster-info &> /dev/null
 CLUSTER_STATUS=$?
+set -e
 
-if [ $CLUSTER_STATUS -eq 0 ]; then
+if [ "$CLUSTER_STATUS" -eq 0 ]; then
     echo "✅ Kubernetes 集群连接正常"
 else
     echo "❌ 无法连接到 Kubernetes 集群 (退出码: $CLUSTER_STATUS)"
     exit 1
 fi
-
-echo "✅ Kubernetes 集群连接正常"
 
 # 创建命名空间
 create_namespace() {
