@@ -133,27 +133,11 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "8080:8080"
+      - "3000:3000"
     environment:
       - REACT_APP_API_URL=http://localhost:8000
     volumes:
       - ./frontend:/app
-      - /app/node_modules
-    networks:
-      - volunteer-network
-
-  # Frontend-admin
-  frontend-admin:
-    image: localhost:5000/volunteer-platform/frontend-admin
-    build:
-      context: ./frontend-admin
-      dockerfile: Dockerfile
-    ports:
-      - "8081:8080"
-    environment:
-      - REACT_APP_API_URL=http://localhost:8000
-    volumes:
-      - ./frontend-admin:/app
       - /app/node_modules
     networks:
       - volunteer-network
