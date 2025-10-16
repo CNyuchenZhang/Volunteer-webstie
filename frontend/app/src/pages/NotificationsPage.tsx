@@ -46,7 +46,7 @@ const NotificationsPage: React.FC = () => {
   return (
     <div style={{ padding: '24px' }}>
       <Title level={2}>
-        <BellOutlined /> {t('notifications.title')}
+        <BellOutlined /> {header}
       </Title>
       
       <Card loading={loading}>

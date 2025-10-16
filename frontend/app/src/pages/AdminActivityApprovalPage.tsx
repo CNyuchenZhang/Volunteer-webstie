@@ -114,9 +114,9 @@ const AdminActivityApprovalPage: React.FC = () => {
       title: t('activities.activityTitle'),
       dataIndex: 'title',
       key: 'title',
-      render: (text: string, record: Activity) => (
+      render: (_: string, record: Activity) => (
         <div>
-          <div style={{ fontWeight: 'bold' }}>{text}</div>
+          <div style={{ fontWeight: 'bold' }}>{record.title}</div> {/* 修复这里 */}
           <div style={{ fontSize: '12px', color: '#666' }}>
             {t('admin.organizer')}: {record.organizer_name}
           </div>
@@ -149,10 +149,10 @@ const AdminActivityApprovalPage: React.FC = () => {
         </Tag>
       ),
     },
-    {
-      title: t('common.actions'),
-      key: 'actions',
-      render: (text: any, record: Activity) => (
+  {
+    title: t('common.actions'),
+    key: 'actions',
+    render: (_: any, record: Activity) => (
         <Space>
           <Button 
             type="primary" 

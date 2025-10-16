@@ -144,9 +144,9 @@ const ParticipantManagementPage: React.FC = () => {
       title: t('participants.name'),
       dataIndex: 'user_name',
       key: 'user_name',
-      render: (text: string, record: Participant) => (
+      render: (_: string, record: Participant) => (
         <div>
-          <div style={{ fontWeight: 'bold' }}>{text}</div>
+          <div style={{ fontWeight: 'bold' }}>{record.user_name}</div> {/* 修复这里 */}
           <div style={{ fontSize: '12px', color: '#666' }}>
             {record.user_email}
           </div>
@@ -187,7 +187,7 @@ const ParticipantManagementPage: React.FC = () => {
     {
       title: t('common.actions'),
       key: 'actions',
-      render: (text: any, record: Participant) => (
+      render: (_: any, record: Participant) => (
         <Space>
           {record.status === 'applied' && (
             <>

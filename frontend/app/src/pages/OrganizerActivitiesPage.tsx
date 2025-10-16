@@ -59,17 +59,7 @@ const OrganizerActivitiesPage: React.FC = () => {
     );
   }
 
-  useEffect(() => {
-    if (user) {
-      loadActivities();
-    }
-  }, [user, loadActivities]);
-
-  useEffect(() => {
-    filterActivities();
-  }, [activities, statusFilter]);
-
-  // 使用 useCallback 定义后再在 useEffect 里引用，避免“使用前声明”错误
+  // 使用 useCallback 定义后在 effect 中调用，避免使用前声明问题
   const loadActivities = useCallback(async () => {
     try {
       setLoading(true);
@@ -82,6 +72,16 @@ const OrganizerActivitiesPage: React.FC = () => {
       setLoading(false);
     }
   }, [t]);
+
+  useEffect(() => {
+    if (user) {
+      loadActivities();
+    }
+  }, [user, loadActivities]);
+
+  useEffect(() => {
+    filterActivities();
+  }, [activities, statusFilter]);
 
   const filterActivities = () => {
     let filtered = activities;
@@ -162,12 +162,12 @@ const OrganizerActivitiesPage: React.FC = () => {
     {
       title: t('activities.participants'),
       key: 'participants',
-      render: (text: any, record: Activity) => `${record.participants_count}/${record.max_participants}`,
+      render: (_: any, record: Activity) => `${record.participants_count}/${record.max_participants}`,
     },
     {
       title: t('activities.status'),
       key: 'status',
-      render: (text: any, record: Activity) => (
+      render: (_: any, record: Activity) => (
         <Tag color={getStatusColor(record.status, record.approval_status)}>
           {getStatusText(record.status, record.approval_status)}
         </Tag>
@@ -176,7 +176,7 @@ const OrganizerActivitiesPage: React.FC = () => {
     {
       title: t('common.actions'),
       key: 'actions',
-      render: (text: any, record: Activity) => (
+      render: (_: any, record: Activity) => (
         <Space>
           <Button 
             type="primary" 

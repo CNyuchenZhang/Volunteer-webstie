@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Button, Card, Typography, Space, message } from 'antd';
 import { userAPI } from '../services/api';
 
-const { Title, Text } = Typography;
+const { Title } = Typography;
 
 const TestPage: React.FC = () => {
   const [loading, setLoading] = useState(false);

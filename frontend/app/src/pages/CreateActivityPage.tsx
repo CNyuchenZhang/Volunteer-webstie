@@ -10,7 +10,6 @@ import {
   Select,
   DatePicker,
   InputNumber,
-  Upload,
   message,
   Row,
   Col

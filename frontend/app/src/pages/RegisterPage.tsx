@@ -7,7 +7,6 @@ import {
   Button, 
   Typography,
   Space,
-  Select,
   Radio,
   message
 } from 'antd';
