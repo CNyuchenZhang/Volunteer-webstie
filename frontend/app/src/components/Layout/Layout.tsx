@@ -6,16 +6,13 @@ import {
   HomeOutlined,
   HeartOutlined,
   UserOutlined,
-  DashboardOutlined,
   SettingOutlined,
   BellOutlined,
   MessageOutlined,
   BarChartOutlined,
-  CrownOutlined,
   LogoutOutlined,
   MenuOutlined,
-  PlusOutlined,
-  UnorderedListOutlined
+  
 } from '@ant-design/icons';
 import LanguageSwitcher from '../LanguageSwitcher/LanguageSwitcher';
 import { useAuth } from '../../contexts/AuthContext';

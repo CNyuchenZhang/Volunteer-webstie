@@ -21,7 +21,7 @@ interface Activity {
   status: string;
   approval_status: string;
   organizer_name: string;
-  organizer_id: number;
+  organizer_id?: number;
 }
 
 const ActivitiesPage: React.FC = () => {
@@ -159,11 +159,7 @@ const ActivitiesPage: React.FC = () => {
     return 'green';
   };
 
-  const getStatusText = (status: string, approvalStatus: string) => {
-    if (approvalStatus === 'pending') return t('activities.pendingApproval');
-    if (approvalStatus === 'rejected') return t('activities.rejected');
-    return t(`activities.status.${status}`);
-  };
+  // 移除未使用函数，避免 TS6133
 
   const canJoinActivity = (activity: Activity) => {
     return (

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
+import { 
   Card,
   Table,
   Button,
@@ -14,14 +14,14 @@ import {
   Modal,
   Form,
   Select,
-  Input
+  
 } from 'antd';
 import { useAuth } from '../contexts/AuthContext';
 import { activityAPI } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 
 const { Title } = Typography;
-const { TextArea } = Input;
+// 移除未使用的 TextArea 引用
 
 interface Activity {
   id: number;
@@ -69,6 +69,7 @@ const OrganizerActivitiesPage: React.FC = () => {
     filterActivities();
   }, [activities, statusFilter]);
 
+  // 使用 useCallback 定义后再在 useEffect 里引用，避免“使用前声明”错误
   const loadActivities = useCallback(async () => {
     try {
       setLoading(true);

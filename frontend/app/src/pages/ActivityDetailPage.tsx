@@ -14,8 +14,7 @@ import {
   Input,
   Select,
   message,
-  Spin,
-  Divider
+  Spin
 } from 'antd';
 import { 
   CalendarOutlined,
@@ -24,9 +23,7 @@ import {
   UserOutlined,
   PhoneOutlined,
   MailOutlined,
-  ClockCircleOutlined,
-  CheckCircleOutlined,
-  CloseCircleOutlined
+  ClockCircleOutlined
 } from '@ant-design/icons';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -52,6 +49,7 @@ interface Activity {
   organizer_name: string;
   organizer_email: string;
   organizer_phone: string;
+  organizer_id?: number;
   required_skills: string[];
   age_requirement: string;
   physical_requirements: string;
