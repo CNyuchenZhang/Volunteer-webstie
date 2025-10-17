@@ -495,7 +495,7 @@ spec:
       - name: frontend
         image: localhost:5000/volunteer-platform/frontend
         ports:
-        - containerPort: 8080
+        - containerPort: 80
         env:
         - name: REACT_APP_API_URL
           value: "/api/v1"
@@ -509,59 +509,12 @@ spec:
         livenessProbe:
           httpGet:
             path: /health
-            port: 8080
+            port: 80
           initialDelaySeconds: 30
           periodSeconds: 10
         readinessProbe:
           httpGet:
             path: /health
-            port: 8080
-          initialDelaySeconds: 5
-          periodSeconds: 5
-
----
-# Frontend Admin Deployment
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: frontend-admin
-  namespace: volunteer-platform
-  labels:
-    app: frontend-admin
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: frontend-admin
-  template:
-    metadata:
-      labels:
-        app: frontend-admin
-    spec:
-      containers:
-      - name: frontend-admin
-        image: localhost:5000/volunteer-platform/frontend-admin
-        ports:
-        - containerPort: 8080
-        env:
-        - name: REACT_APP_API_URL
-          value: "/api/v1"
-        resources:
-          requests:
-            memory: "128Mi"
-            cpu: "100m"
-          limits:
-            memory: "256Mi"
-            cpu: "200m"
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8080
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 8080
+            port: 80
           initialDelaySeconds: 5
           periodSeconds: 5

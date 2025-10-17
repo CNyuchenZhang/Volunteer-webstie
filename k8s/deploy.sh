@@ -22,21 +22,16 @@ if ! command -v kubectl &> /dev/null; then
     echo "❌ kubectl 未安装或不在 PATH 中"
     exit 1
 else
-    set +e
     echo "✅ kubectl 可用"
-    set -e
 fi
 
 # 检查集群连接
-set +e
-kubectl cluster-info &> /dev/null
-CLUSTER_STATUS=$?
-set -e
-
-if [ "$CLUSTER_STATUS" -eq 0 ]; then
+echo "🔗 检查 Kubernetes 集群连接..."
+# 尝试快速检测 kubectl 与 API server 连通性
+if kubectl cluster-info >/dev/null 2>&1; then
     echo "✅ Kubernetes 集群连接正常"
 else
-    echo "❌ 无法连接到 Kubernetes 集群 (退出码: $CLUSTER_STATUS)"
+    echo "❌ 无法连接到 Kubernetes 集群，请检查 kubeconfig、网络与集群状态"
     exit 1
 fi
 

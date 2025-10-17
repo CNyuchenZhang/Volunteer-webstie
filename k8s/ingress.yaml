@@ -37,6 +37,7 @@ spec:
   #   - *.volunteer-platform.com
   #   secretName: volunteer-platform-tls
   
+  ingressClassName: nginx
   rules:
   # 生产环境域名
   - host: volunteer-platform.com

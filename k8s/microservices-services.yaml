@@ -119,24 +119,6 @@ spec:
     app: frontend
   ports:
   - protocol: TCP
-    port: 8080
-    targetPort: 8080
-  type: ClusterIP
-
----
-# Frontend Admin Service
-apiVersion: v1
-kind: Service
-metadata:
-  name: frontend-admin
-  namespace: volunteer-platform
-  labels:
-    app: frontend-admin
-spec:
-  selector:
-    app: frontend-admin
-  ports:
-  - protocol: TCP
-    port: 8080
-    targetPort: 8080
+    port: 80
+    targetPort: 80
   type: ClusterIP
