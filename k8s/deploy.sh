@@ -41,7 +41,7 @@ create_namespace() {
     kubectl apply -f namespace.yaml
 }
 
-# 创建 ConfigMap 和 Secrets
+# 创建 ConfigMap
 create_config() {
     echo "⚙️  创建配置..."
     kubectl apply -f configmap.yaml
@@ -66,7 +66,7 @@ deploy_microservices() {
     kubectl apply -f microservices-services.yaml
 }
 
-# 部署 nginx 网关
+# 部署 nginx 网关（等待其他服务启动后）
 deploy_gateway() {
     echo "🌐 部署 nginx 网关..."
     kubectl apply -f nginx-deployment.yaml
@@ -78,23 +78,28 @@ deploy_ingress() {
     kubectl apply -f ingress.yaml
 }
 
-# 等待部署完成
-wait_for_deployment() {
-    echo "⏳ 等待部署完成..."
+# 等待基础服务部署完成
+wait_for_base_services() {
+    echo "⏳ 等待基础服务部署完成..."
     
-    deployments=(
+    base_deployments=(
         "postgres"
         "user-service"
         "activity-service"
         "notification-service"
-        "nginx-gateway"
         "frontend-service"
     )
     
-    for deployment in "${deployments[@]}"; do
+    for deployment in "${base_deployments[@]}"; do
         echo "等待 $deployment 就绪..."
         kubectl wait --for=condition=available --timeout=300s deployment/$deployment -n $NAMESPACE
     done
+}
+
+# 等待nginx网关部署完成
+wait_for_gateway() {
+    echo "⏳ 等待 nginx 网关部署完成..."
+    kubectl wait --for=condition=available --timeout=300s deployment/nginx-gateway -n $NAMESPACE
 }
 
 # 检查服务状态
@@ -112,9 +117,6 @@ check_status() {
     
     echo "=== ConfigMaps ==="
     kubectl get configmaps -n $NAMESPACE
-
-    echo "=== Secrets ==="
-    kubectl get secrets -n $NAMESPACE
 
     echo "=== Deployments ==="
     kubectl get deployments -n $NAMESPACE
@@ -192,13 +194,10 @@ delete_deployment() {
     echo "删除持久卷..."
     kubectl delete pv postgres-pv --ignore-not-found=true
     
-    echo "7/9 删除配置映射..."
+    echo "7/8 删除配置映射..."
     kubectl delete -f configmap.yaml --ignore-not-found=true
     
-    echo "8/9 删除密钥..."
-    kubectl delete -f secrets.yaml --ignore-not-found=true
-    
-    echo "9/9 删除命名空间..."
+    echo "8/8 删除命名空间..."
     kubectl delete -f namespace.yaml --ignore-not-found=true
     
     echo "删除部署完成"
@@ -209,14 +208,14 @@ update_deployment() {
     echo "🔄 更新部署..."
     
     kubectl apply -f configmap.yaml
-    kubectl apply -f secrets.yaml
     kubectl apply -f microservices-deployments.yaml
     kubectl apply -f frontend-deployment.yaml
     kubectl apply -f nginx-deployment.yaml
     kubectl apply -f ingress.yaml
     
     echo "⏳ 等待更新完成..."
-    wait_for_deployment
+    wait_for_base_services
+    wait_for_gateway
 }
 
 # 主逻辑
@@ -226,9 +225,11 @@ case $OPERATION in
         create_config
         deploy_databases
         deploy_microservices
+        deploy_frontend
+        wait_for_base_services
         deploy_gateway
+        wait_for_gateway
         deploy_ingress
-        wait_for_deployment
         check_status
         get_access_info
         echo "✅ 部署完成！"
