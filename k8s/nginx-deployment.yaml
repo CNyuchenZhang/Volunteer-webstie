@@ -226,4 +226,5 @@ data:
             add_header Content-Type text/plain;
             add_header Cache-Control "no-cache, no-store, must-revalidate";
         }
+      }
     }
