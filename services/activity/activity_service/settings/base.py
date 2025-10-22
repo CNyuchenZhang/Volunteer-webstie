@@ -183,7 +183,7 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 
 # Service URLs
-USER_SERVICE_URL = config('USER_SERVICE_URL', default='http://user-service.mywork.svc.cluster.local:8001')
+USER_SERVICE_URL = config('USER_SERVICE_URL', default='http://user-service:8000')
 
 # Spectacular settings
 SPECTACULAR_SETTINGS = {

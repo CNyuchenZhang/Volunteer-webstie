@@ -128,22 +128,22 @@ data:
         limit_conn_zone $server_name zone=conn_limit_per_server:10m;
 
         upstream user_service {
-            server user-service.mywork.svc.cluster.local:8000 max_fails=3 fail_timeout=30s;
+            server user-service:8000 max_fails=3 fail_timeout=30s;
             keepalive 32;
         }
 
         upstream activity_service {
-            server activity-service.mywork.svc.cluster.local:8000 max_fails=3 fail_timeout=30s;
+            server activity-service:8000 max_fails=3 fail_timeout=30s;
             keepalive 32;
         }
 
         upstream notification_service {
-            server notification-service.mywork.svc.cluster.local:8000 max_fails=3 fail_timeout=30s;
+            server notification-service:8000 max_fails=3 fail_timeout=30s;
             keepalive 32;
         }
 
         upstream frontend_service {
-            server frontend-service.mywork.svc.cluster.local:80 max_fails=3 fail_timeout=30s;
+            server frontend-service:80 max_fails=3 fail_timeout=30s;
             keepalive 32;
         }
 

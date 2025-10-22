@@ -128,7 +128,7 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 MEDIA_URL = '/media/'
 # MEDIA_URL = 'http://47.79.239.219:30081/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
-MEDIA_DOMAIN = 'http://47.79.239.219:30081' 
+MEDIA_DOMAIN = 'http://user-service:8000' 
 
 
 

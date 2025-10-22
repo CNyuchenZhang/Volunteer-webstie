@@ -224,7 +224,7 @@ class ActivityViewSet(viewsets.ModelViewSet):
             try:
                 # 发送到通知服务
                 response = requests.post(
-                    'http://notification-service.mywork.svc.cluster.local:8000/api/v1/notifications/',
+                    'http://notification-service:8000/api/v1/notifications/',
                     json=notification_data,
                     timeout=5
                 )
@@ -238,7 +238,7 @@ class ActivityViewSet(viewsets.ModelViewSet):
                     'activity_id': activity.id,
                 }
                 requests.post(
-                    'http://user-service.mywork.svc.cluster.local:8000/api/v1/notifications/create/',
+                    'http://user-service:8000/api/v1/notifications/create/',
                     json=user_notification_data,
                     timeout=5
                 )
@@ -282,7 +282,7 @@ class ActivityViewSet(viewsets.ModelViewSet):
                 # 在实际部署中，应该使用服务间的认证token或内部API
                 
                 # 尝试通过用户服务API获取管理员
-                user_service_url = 'http://user-service.mywork.svc.cluster.local:8000/api/v1/search/'
+                user_service_url = 'http://user-service:8000/api/v1/search/'
                 # 注意：这个API需要认证，所以我们使用fallback逻辑
                 try:
                     response = requests.get(
@@ -357,7 +357,7 @@ Start Date: {activity.start_date}
                 try:
                     # 发送到通知服务
                     response = requests.post(
-                        'http://notification-service.mywork.svc.cluster.local:8003/api/v1/notifications/',
+                        'http://notification-service:8000/api/v1/notifications/',
                         json=notification_data,
                         timeout=5,
                         headers={'Content-Type': 'application/json'}
@@ -374,7 +374,7 @@ Start Date: {activity.start_date}
                         'activity_id': activity.id,
                     }
                     user_response = requests.post(
-                        'http://user-service.mywork.svc.cluster.local:8001/api/v1/notifications/create/',
+                        'http://user-service:8000/api/v1/notifications/create/',
                         json=user_notification_data,
                         timeout=5
                     )
@@ -475,7 +475,7 @@ class AdminActivityApprovalViewSet(viewsets.ModelViewSet):
             try:
                 # 发送到通知服务
                 response = requests.post(
-                    'http://notification-service.mywork.svc.cluster.local:8000/api/v1/notifications/',
+                    'http://notification-service:8000/api/v1/notifications/',
                     json=notification_data,
                     timeout=5
                 )
@@ -489,7 +489,7 @@ class AdminActivityApprovalViewSet(viewsets.ModelViewSet):
                     'activity_id': activity.id,
                 }
                 requests.post(
-                    'http://user-service.mywork.svc.cluster.local:8000/api/v1/notifications/create/',
+                    'http://user-service:8000/api/v1/notifications/create/',
                     json=user_notification_data,
                     timeout=5
                 )
@@ -594,7 +594,7 @@ class ActivityParticipantViewSet(viewsets.ModelViewSet):
                     'user_id': participant.user_id,
                 }
                 try:
-                    requests.post('http://notification-service.mywork.svc.cluster.local:8000/api/v1/notifications/', json=notification_data, timeout=5)
+                    requests.post('http://notification-service:8000/api/v1/notifications/', json=notification_data, timeout=5)
                 except requests.exceptions.RequestException:
                     pass
         except Exception:
@@ -676,7 +676,7 @@ class ActivityParticipantViewSet(viewsets.ModelViewSet):
                 # 发送到通知服务
                 print(f"   → 发送通知到通知服务 (recipient_id={participant.user_id})...")
                 response = requests.post(
-                    'http://notification-service.mywork.svc.cluster.local:8000/api/v1/notifications/',
+                    'http://notification-service:8000/api/v1/notifications/',
                     json=notification_data,
                     timeout=5
                 )
@@ -692,7 +692,7 @@ class ActivityParticipantViewSet(viewsets.ModelViewSet):
                 }
                 print(f"   → 发送通知到用户服务 (user_id={participant.user_id})...")
                 user_response = requests.post(
-                    'http://user-service.mywork.svc.cluster.local:8000/api/v1/notifications/create/',
+                    'http://user-service:8000/api/v1/notifications/create/',
                     json=user_notification_data,
                     timeout=5
                 )
@@ -806,7 +806,7 @@ class ActivityParticipantApprovalView(generics.UpdateAPIView):
                 # 发送到通知服务
                 print(f"   → 发送通知到通知服务 (recipient_id={participant.user_id})...")
                 response = requests.post(
-                    'http://notification-service.mywork.svc.cluster.local:8003/api/v1/notifications/',
+                    'http://notification-service:8000/api/v1/notifications/',
                     json=notification_data,
                     timeout=5
                 )
@@ -822,7 +822,7 @@ class ActivityParticipantApprovalView(generics.UpdateAPIView):
                 }
                 print(f"   → 发送通知到用户服务 (user_id={participant.user_id})...")
                 user_response = requests.post(
-                    'http://user-service.mywork.svc.cluster.local:8001/api/v1/notifications/create/',
+                    'http://user-service:8000/api/v1/notifications/create/',
                     json=user_notification_data,
                     timeout=5
                 )
