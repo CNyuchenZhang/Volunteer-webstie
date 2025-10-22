@@ -6,7 +6,7 @@ networks:
 
 services:
   user-service:
-    image: docker.io/jsrgzyc/user-service:latest
+    image: jsrgzyc/user-service:latest
     build:
       context: ./services/user
       dockerfile: Dockerfile
@@ -18,7 +18,7 @@ services:
       - volunteer-net
 
   activity-service:
-    image: docker.io/jsrgzyc/activity-service:latest
+    image: jsrgzyc/activity-service:latest
     build:
       context: ./services/activity
       dockerfile: Dockerfile
@@ -32,7 +32,7 @@ services:
       - volunteer-net
 
   notification-service:
-    image: docker.io/jsrgzyc/notification-service:latest
+    image: jsrgzyc/notification-service:latest
     build:
       context: ./services/notification
       dockerfile: Dockerfile
@@ -47,7 +47,7 @@ services:
       - volunteer-net
 
   frontend-service:
-    image: docker.io/jsrgzyc/frontend:latest
+    image: jsrgzyc/frontend:latest
     build:
       context: ./frontend
       dockerfile: Dockerfile
