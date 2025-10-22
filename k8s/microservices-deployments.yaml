@@ -16,8 +16,8 @@ spec:
     spec:
       containers:
       - name: user-service
-        image: docker.io/jsrgzyc/user-service:latest
-        imagePullPolicy: Always
+        image: jsrgzyc/user-service:latest
+        imagePullPolicy: Never
         ports:
         - containerPort: 8000
         livenessProbe:
@@ -55,8 +55,8 @@ spec:
     spec:
       containers:
       - name: activity-service
-        image: docker.io/jsrgzyc/activity-service:latest
-        imagePullPolicy: Always
+        image: jsrgzyc/activity-service:latest
+        imagePullPolicy: Never
         ports:
         
         - containerPort: 8000
@@ -95,8 +95,8 @@ spec:
     spec:
       containers:
       - name: notification-service
-        image: docker.io/jsrgzyc/notification-service:latest
-        imagePullPolicy: Always
+        image: jsrgzyc/notification-service:latest
+        imagePullPolicy: Never
         ports:
         - containerPort: 8000
         livenessProbe:

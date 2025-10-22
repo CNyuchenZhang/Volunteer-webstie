@@ -15,8 +15,8 @@ spec:
     spec:
       containers:
       - name: frontend-service
-        image: docker.io/jsrgzyc/frontend:latest
-        imagePullPolicy: Always
+        image: jsrgzyc/frontend:latest
+        imagePullPolicy: Never
         ports:
         - containerPort: 80
         resources:
