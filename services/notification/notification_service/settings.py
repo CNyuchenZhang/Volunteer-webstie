@@ -31,9 +31,9 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -61,19 +61,28 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'notification_service.wsgi.application'
 
-# 数据库配置（适配 K8s 集群中的 PostgreSQL）
-# - Service 名称为 postgres（见 k8s/postgres-deployment.yaml）
-# - 优先读取 DB_* 环境变量；兼容 POSTGRES_* 命名；默认库名 volunteer_db
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('DB_NAME', os.getenv('POSTGRES_DB', 'volunteer_db')),
-        'USER': os.getenv('DB_USER', os.getenv('POSTGRES_USER', 'postgres')),
-        'PASSWORD': os.getenv('DB_PASSWORD', os.getenv('POSTGRES_PASSWORD', 'password')),
-        'HOST': os.getenv('DB_HOST', os.getenv('POSTGRES_HOST', 'postgres')),
-        'PORT': os.getenv('DB_PORT', os.getenv('POSTGRES_PORT', '5432')),
+# Database
+# 支持使用 SQLite 或 PostgreSQL
+USE_SQLITE = True
+
+if USE_SQLITE:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.getenv('POSTGRES_DB', 'volunteer_platform'),
+            'USER': os.getenv('POSTGRES_USER', 'postgres'),
+            'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'password'),
+            'HOST': os.getenv('POSTGRES_HOST', 'localhost'),
+            'PORT': os.getenv('POSTGRES_PORT', '5432'),
+        }
+    }
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -116,16 +125,47 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 20,
 }
 
-# CORS 设置（适配 K8s 场景）
-# - 默认放开所有来源，避免 Ingress/网关域名与后端域名不同导致的跨域问题
-# - 如需严格控制，可通过环境变量 CORS_ALLOWED_ORIGINS 传入逗号分隔域名列表
-CORS_ALLOW_ALL_ORIGINS = os.getenv('CORS_ALLOW_ALL_ORIGINS', 'True').lower() == 'true'
-CORS_ALLOWED_ORIGINS = [s.strip() for s in os.getenv('CORS_ALLOWED_ORIGINS', '').split(',') if s.strip()]
-CORS_ALLOW_CREDENTIALS = os.getenv('CORS_ALLOW_CREDENTIALS', 'True').lower() == 'true'
+# CORS settings - 支持通过 nginx 网关和 ingress 访问
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://volunteer-platform.local",
+    "http://localhost",
+    "http://volunteer-platform.com",
+    "https://volunteer-platform.com",
+    "https://volunteer-platform.local",
+]
 
-# Celery 配置（移除 Redis，改用内存队列，便于无外部依赖地运行）
-CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'memory://')
-CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'cache+memory://')
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_ALL_ORIGINS = False  # 只允许上述源
+
+# CSRF 设置（前后端分离，禁用 CSRF 或使用 Token）
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://volunteer-platform.local",
+    "http://localhost",
+    "http://volunteer-platform.com",
+    "https://volunteer-platform.com",
+    "https://volunteer-platform.local",
+]
+
+# Celery Configuration
+# 开发环境：同步执行任务（不需要 RabbitMQ/Redis）
+CELERY_TASK_ALWAYS_EAGER = True  # 同步执行任务，不使用消息队列
+CELERY_TASK_EAGER_PROPAGATES = True  # 传播异常
+
+# 生产环境配置（当前不使用）
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
@@ -139,7 +179,10 @@ RABBITMQ_PASSWORD = os.getenv('RABBITMQ_PASSWORD', 'password')
 RABBITMQ_VHOST = os.getenv('RABBITMQ_VHOST', '/')
 
 # Email Configuration (for notifications)
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+# 开发环境：使用控制台后端（邮件会打印到终端，不会真正发送）
+EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend')
+
+# 生产环境配置（当前不使用）
 EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
 EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
 EMAIL_USE_TLS = True

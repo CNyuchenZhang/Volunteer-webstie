@@ -1,0 +1,1 @@
+python manage.py test notification_service.tests -v 2

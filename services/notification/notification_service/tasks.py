@@ -47,14 +47,14 @@ def send_activity_approval_notification(activity_id, approval_status, admin_note
         
         if approval_status == 'approved':
             notification_type = 'activity_approval'
-            title = "活动已通过审批"
-            message = f"您提交的活动 (ID: {activity_id}) 已通过审批。"
+            title = "Activity Approved"
+            message = f"Your submitted activity (ID: {activity_id}) has been approved."
         else:
             notification_type = 'activity_rejection'
-            title = "活动审批被拒绝"
-            message = f"您提交的活动 (ID: {activity_id}) 审批被拒绝。"
+            title = "Activity Rejected"
+            message = f"Your submitted activity (ID: {activity_id}) has been rejected."
             if admin_notes:
-                message += f"\n\n拒绝原因：{admin_notes}"
+                message += f"\n\nRejection reason: {admin_notes}"
         
         # Create notification
         notification = Notification.objects.create(
@@ -85,12 +85,12 @@ def send_volunteer_application_notification(activity_id, volunteer_id, applicati
     try:
         if application_status == 'approved':
             notification_type = 'volunteer_approval'
-            title = "志愿者申请已通过"
-            message = f"您的志愿者申请 (活动ID: {activity_id}) 已通过。"
+            title = "Volunteer Application Approved"
+            message = f"Your volunteer application (Activity ID: {activity_id}) has been approved."
         else:
             notification_type = 'volunteer_rejection'
-            title = "志愿者申请被拒绝"
-            message = f"您的志愿者申请 (活动ID: {activity_id}) 被拒绝。"
+            title = "Volunteer Application Rejected"
+            message = f"Your volunteer application (Activity ID: {activity_id}) has been rejected."
         
         # Create notification
         notification = Notification.objects.create(

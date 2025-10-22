@@ -9,7 +9,7 @@ set -e
 
 ENVIRONMENT=${1:-dev}
 OPERATION=${2:-deploy}
-NAMESPACE="volunteer-platform"
+NAMESPACE="mywork"
 
 echo "🚀 开始执行 Volunteer Platform"
 echo "环境: $ENVIRONMENT"
@@ -45,13 +45,18 @@ create_namespace() {
 create_config() {
     echo "⚙️  创建配置..."
     kubectl apply -f configmap.yaml
-    kubectl apply -f secrets.yaml
 }
 
 # 创建数据库服务
 deploy_databases() {
     echo "🗄️  部署数据库服务..."
     kubectl apply -f postgres-deployment.yaml
+}
+
+# 部署前端
+deploy_frontend() {
+    echo "🔧 部署前端..."
+    kubectl apply -f frontend-deployment.yaml
 }
 
 # 部署微服务
@@ -78,16 +83,12 @@ wait_for_deployment() {
     echo "⏳ 等待部署完成..."
     
     deployments=(
+        "postgres"
         "user-service"
         "activity-service"
         "notification-service"
-        "payment-service"
-        "analytics-service"
-        "recommendation-service"
-        "frontend"
-        "frontend-admin"
-        "postgres"
         "nginx-gateway"
+        "frontend-service"
     )
     
     for deployment in "${deployments[@]}"; do
@@ -160,6 +161,7 @@ delete_deployment() {
     echo "3/9 删除微服务..."
     if kubectl get services -n $NAMESPACE 2>/dev/null | grep -q .; then
         kubectl delete -f microservices-services.yaml --ignore-not-found=true
+        kubectl delete -f frontend-deployment.yaml --ignore-not-found=true
         echo "等待服务删除完成..."
         kubectl wait --for=delete --all services --timeout=30s -n $NAMESPACE 2>/dev/null || true
     fi
@@ -209,6 +211,7 @@ update_deployment() {
     kubectl apply -f configmap.yaml
     kubectl apply -f secrets.yaml
     kubectl apply -f microservices-deployments.yaml
+    kubectl apply -f frontend-deployment.yaml
     kubectl apply -f nginx-deployment.yaml
     kubectl apply -f ingress.yaml
     

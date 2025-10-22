@@ -140,7 +140,7 @@ class Activity(models.Model):
     
     def get_participants_count(self):
         """Get current number of participants."""
-        return self.participants.filter(status__in=['registered', 'attended', 'completed']).count()
+        return self.participants.filter(status__in=['approved', 'registered', 'attended', 'completed']).count()
     
     def get_available_spots(self):
         """Get number of available spots."""

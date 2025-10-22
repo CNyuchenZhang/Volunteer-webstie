@@ -3,9 +3,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: user-service
-  namespace: volunteer-platform
-  labels:
-    app: user-service
+  namespace: mywork
 spec:
   selector:
     app: user-service
@@ -21,9 +19,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: activity-service
-  namespace: volunteer-platform
-  labels:
-    app: activity-service
+  namespace: mywork
 spec:
   selector:
     app: activity-service
@@ -39,86 +35,12 @@ apiVersion: v1
 kind: Service
 metadata:
   name: notification-service
-  namespace: volunteer-platform
-  labels:
-    app: notification-service
+  namespace: mywork
 spec:
   selector:
     app: notification-service
   ports:
-  - protocol: TCP
-    port: 8000
-    targetPort: 8000
-  type: ClusterIP
-
----
-# Payment Service
-apiVersion: v1
-kind: Service
-metadata:
-  name: payment-service
-  namespace: volunteer-platform
-  labels:
-    app: payment-service
-spec:
-  selector:
-    app: payment-service
-  ports:
-  - protocol: TCP
-    port: 8000
-    targetPort: 8000
-  type: ClusterIP
-
----
-# Analytics Service
-apiVersion: v1
-kind: Service
-metadata:
-  name: analytics-service
-  namespace: volunteer-platform
-  labels:
-    app: analytics-service
-spec:
-  selector:
-    app: analytics-service
-  ports:
-  - protocol: TCP
-    port: 8000
-    targetPort: 8000
-  type: ClusterIP
-
----
-# Recommendation Service
-apiVersion: v1
-kind: Service
-metadata:
-  name: recommendation-service
-  namespace: volunteer-platform
-  labels:
-    app: recommendation-service
-spec:
-  selector:
-    app: recommendation-service
-  ports:
-  - protocol: TCP
-    port: 8000
-    targetPort: 8000
-  type: ClusterIP
-
----
-# Frontend Service
-apiVersion: v1
-kind: Service
-metadata:
-  name: frontend
-  namespace: volunteer-platform
-  labels:
-    app: frontend
-spec:
-  selector:
-    app: frontend
-  ports:
-  - protocol: TCP
-    port: 80
-    targetPort: 80
+    - protocol: TCP
+      port: 8000
+      targetPort: 8000
   type: ClusterIP

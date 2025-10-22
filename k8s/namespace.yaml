@@ -1,6 +1,4 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: volunteer-platform
-  labels:
-    name: volunteer-platform
+  name: mywork

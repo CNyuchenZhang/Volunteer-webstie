@@ -11,6 +11,8 @@ from django.db.models import Q
 from django.utils import timezone
 from datetime import timedelta
 from functools import wraps
+from rest_framework.views import APIView
+from django.http import JsonResponse
 
 from .models import User, UserProfile, UserAchievement, UserActivity, UserNotification
 from .serializers import (
@@ -46,6 +48,7 @@ class UserRegistrationView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = UserRegistrationSerializer
     permission_classes = [AllowAny]
+    authentication_classes = []  # 注册不需要认证
     
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -56,7 +59,7 @@ class UserRegistrationView(generics.CreateAPIView):
         token, created = Token.objects.get_or_create(user=user)
         
         return Response({
-            'user': UserSerializer(user).data,
+            'user': UserSerializer(user, context={'request': request}).data,
             'token': token.key,
             'message': 'User created successfully'
         }, status=status.HTTP_201_CREATED)
@@ -68,6 +71,7 @@ class UserLoginView(generics.GenericAPIView):
     """
     serializer_class = UserLoginSerializer
     permission_classes = [AllowAny]
+    authentication_classes = []  # 登录不需要认证
     
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -89,7 +93,7 @@ class UserLoginView(generics.GenericAPIView):
         login(request, user)
         
         return Response({
-            'user': UserSerializer(user).data,
+            'user': UserSerializer(user, context={'request': request}).data,
             'token': token.key,
             'message': 'Login successful'
         })
@@ -173,6 +177,84 @@ class PasswordChangeView(generics.GenericAPIView):
         user.save()
         
         return Response({'message': 'Password changed successfully'})
+
+
+class UserAvatarUploadView(generics.GenericAPIView):
+    """
+    User avatar upload endpoint.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, *args, **kwargs):
+        from django.db import transaction
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        user = request.user
+        avatar_file = request.FILES.get('avatar')
+        
+        if not avatar_file:
+            return Response(
+                {'error': 'No avatar file provided'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            with transaction.atomic():
+                # 删除旧头像
+                if user.avatar:
+                    try:
+                        user.avatar.delete(save=False)
+                    except Exception as e:
+                        logger.warning(f"Failed to delete old avatar: {str(e)}")
+                
+                # 保存新头像
+                user.avatar = avatar_file
+                # 显式保存 avatar 字段
+                user.save(update_fields=['avatar', 'updated_at'])
+                
+                # 强制刷新以确保数据库已更新
+                user.refresh_from_db()
+                
+                # 验证保存是否成功
+                if not user.avatar:
+                    logger.error("Avatar field is empty after save!")
+                    raise Exception("Failed to save avatar to database")
+                
+                # 返回头像 URL
+                avatar_url = request.build_absolute_uri(user.avatar.url)
+                
+                logger.info(f"Avatar uploaded successfully for user {user.id}: {user.avatar.name}")
+                
+                return Response({
+                    'avatar': avatar_url,
+                    'message': 'Avatar uploaded successfully'
+                })
+                
+        except Exception as e:
+            logger.error(f"Error uploading avatar: {str(e)}", exc_info=True)
+            return Response(
+                {'error': f'Failed to upload avatar: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class UserAvatarRemoveView(generics.GenericAPIView):
+    """
+    User avatar remove endpoint.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def delete(self, request, *args, **kwargs):
+        user = request.user
+        
+        if user.avatar:
+            user.avatar.delete(save=True)
+        
+        return Response({
+            'avatar': None,
+            'message': 'Avatar removed successfully'
+        })
 
 
 class UserStatsView(generics.GenericAPIView):
@@ -292,6 +374,70 @@ def mark_all_notifications_read(request):
     return Response({'message': 'All notifications marked as read'})
 
 
+@api_view(['POST'])
+@permission_classes([AllowAny])  # 允许其他服务调用
+def create_notification(request):
+    """
+    Create a user notification (for internal service use).
+    """
+    try:
+        user_id = request.data.get('user_id')
+        notification_type = request.data.get('notification_type', 'system')
+        title = request.data.get('title')
+        message = request.data.get('message')
+        activity_id = request.data.get('activity_id')
+        achievement_id = request.data.get('achievement_id')
+        
+        if not user_id or not title or not message:
+            return Response(
+                {'error': 'user_id, title, and message are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # 获取用户
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return Response(
+                {'error': 'User not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # 创建通知
+        notification = UserNotification.objects.create(
+            user=user,
+            notification_type=notification_type,
+            title=title,
+            message=message,
+            activity_id=activity_id,
+            achievement_id=achievement_id,
+        )
+        
+        serializer = UserNotificationSerializer(notification)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def global_stats(request):
+    """
+    Global statistics endpoint (public access).
+    """
+    total_volunteers = User.objects.filter(role='volunteer').count()
+    total_ngos = User.objects.filter(role='organizer').count()
+    
+    return Response({
+        'total_volunteers': total_volunteers,
+        'total_ngos': total_ngos,
+    })
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def search_users(request):
@@ -301,35 +447,31 @@ def search_users(request):
     query = request.GET.get('q', '')
     role = request.GET.get('role', '')
     location = request.GET.get('location', '')
-    
+
     queryset = User.objects.all()
-    
+
     if query:
         queryset = queryset.filter(
             Q(first_name__icontains=query) |
             Q(last_name__icontains=query) |
             Q(email__icontains=query)
         )
-    
+
     if role:
         queryset = queryset.filter(role=role)
-    
+
     if location:
         queryset = queryset.filter(location__icontains=location)
-    
+
     # Exclude current user
     queryset = queryset.exclude(id=request.user.id)
-    
+
     serializer = UserSerializer(queryset[:20], many=True)
     return Response(serializer.data)
 
 
-class UserProfileView(generics.RetrieveAPIView):
-    """
-    Get user profile for token validation.
-    """
-    serializer_class = UserSerializer
-    permission_classes = [IsAuthenticated]
-    
-    def get_object(self):
-        return self.request.user
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def health(request):
+    return JsonResponse({'status': 'ok'}, status=200)
+

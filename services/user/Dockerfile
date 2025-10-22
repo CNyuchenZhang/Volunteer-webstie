@@ -1,25 +1,6 @@
-FROM python:3.11-slim
-
+FROM python:3.11.5
 WORKDIR /app
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    postgresql-client \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements and install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy project files
 COPY . .
-
-# Create non-root user
-RUN adduser --disabled-password --gecos '' appuser && chown -R appuser:appuser /app
-USER appuser
-
-# Expose port
-EXPOSE 8000
-
-# Run the application
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "user_service.wsgi:application"]
+RUN pip install --no-cache-dir -r requirements.txt -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple --trusted-host mirrors.tuna.tsinghua.edu.cn
+EXPOSE 8001
+CMD ["gunicorn", "--bind", "0.0.0.0:8001", "user_service.wsgi:application"]

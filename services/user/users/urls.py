@@ -15,6 +15,8 @@ urlpatterns = [
     path('profile/update/', views.UserUpdateView.as_view(), name='user-update'),
     path('profile/details/', views.UserProfileUpdateView.as_view(), name='user-profile-update'),
     path('profile/password/', views.PasswordChangeView.as_view(), name='password-change'),
+    path('profile/upload-avatar/', views.UserAvatarUploadView.as_view(), name='upload-avatar'),
+    path('profile/remove-avatar/', views.UserAvatarRemoveView.as_view(), name='remove-avatar'),
     
     # User data
     path('stats/', views.UserStatsView.as_view(), name='user-stats'),
@@ -25,7 +27,13 @@ urlpatterns = [
     # Notification actions
     path('notifications/<int:notification_id>/read/', views.mark_notification_read, name='mark-notification-read'),
     path('notifications/read-all/', views.mark_all_notifications_read, name='mark-all-notifications-read'),
+    path('notifications/create/', views.create_notification, name='create-notification'),
     
     # Search
     path('search/', views.search_users, name='search-users'),
+    
+    # Global stats
+    path('global-stats/', views.global_stats, name='global-stats'),
+    # Health check
+    path('health/', views.health, name='health'),
 ]

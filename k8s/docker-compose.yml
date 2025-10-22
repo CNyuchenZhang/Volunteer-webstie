@@ -1,0 +1,63 @@
+version: "3.9"
+
+networks:
+  volunteer-net:
+    driver: bridge
+
+services:
+  user-service:
+    image: docker.io/jsrgzyc/user-service:latest
+    build:
+      context: ./user
+      dockerfile: Dockerfile
+    container_name: user_service
+    ports:
+      - "8001:8001"
+    restart: unless-stopped
+    networks:
+      - volunteer-net
+
+  activity-service:
+    image: docker.io/jsrgzyc/activity-service:latest
+    build:
+      context: ./activity
+      dockerfile: Dockerfile
+    container_name: activity_service
+    ports:
+      - "8002:8002"
+    restart: unless-stopped
+    depends_on:
+      - user-service
+    networks:
+      - volunteer-net
+
+  notification-service:
+    image: docker.io/jsrgzyc/notification-service:latest
+    build:
+      context: ./notification
+      dockerfile: Dockerfile
+    container_name: notification_service
+    ports:
+      - "8003:8003"
+    restart: unless-stopped
+    depends_on:
+      - user-service
+      - activity-service
+    networks:
+      - volunteer-net
+
+  frontend-service:
+    image: docker.io/jsrgzyc/frontend:latest
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: frontend_service
+    ports:
+      - "80:80"
+    restart: unless-stopped
+    depends_on:
+      - user-service
+      - activity-service
+      - notification-service
+    networks:
+      - volunteer-net

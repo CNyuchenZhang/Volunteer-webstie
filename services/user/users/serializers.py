@@ -5,7 +5,7 @@ from rest_framework import serializers
 from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
 from .models import User, UserProfile, UserAchievement, UserActivity, UserNotification
-
+from django.conf import settings
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
     """
@@ -70,14 +70,17 @@ class UserLoginSerializer(serializers.Serializer):
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
-    """
-    Serializer for user profile.
-    """
+    avatar = serializers.SerializerMethodField()
+
     class Meta:
         model = UserProfile
         fields = '__all__'
         read_only_fields = ('user', 'created_at', 'updated_at')
 
+    def get_avatar(self, obj):
+        if obj.user.avatar:  # ⚠️ 注意这里是 obj.user.avatar
+            return f"{settings.MEDIA_DOMAIN}{obj.user.avatar.url}"
+        return None
 
 class UserSerializer(serializers.ModelSerializer):
     """
@@ -86,6 +89,7 @@ class UserSerializer(serializers.ModelSerializer):
     profile = UserProfileSerializer(read_only=True)
     volunteer_level = serializers.ReadOnlyField()
     full_name = serializers.ReadOnlyField()
+    avatar = serializers.SerializerMethodField()
     
     class Meta:
         model = User
@@ -101,6 +105,48 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'is_verified', 'total_volunteer_hours', 'impact_score',
             'created_at', 'updated_at'
         )
+    
+    # def get_avatar(self, obj):
+    #     """返回头像的完整URL"""
+    #     if obj.avatar:
+    #         request = self.context.get('request')
+    #         if request:
+    #             return request.build_absolute_uri(obj.avatar.url)
+    #         return obj.avatar.url
+    #     return None
+    # def get_avatar(self, obj):
+    #     """返回头像的完整URL"""
+    #     if obj.avatar:
+    #         request = self.context.get('request')
+    #         if request:
+    #             return f"http://47.79.239.219:30081{obj.avatar.url}"
+    #         return obj.avatar.url
+    #     return None
+    # def get_avatar(self, obj):
+    #     """返回头像的完整 URL"""
+    #     if not obj.avatar:
+    #         return None
+
+    #     request = self.context.get('request')
+    #     # ✅ 优先使用 request.build_absolute_uri（自动带端口）
+    #     if request:
+    #         return request.build_absolute_uri(obj.avatar.url)
+
+    #     # ✅ 如果没有 request，则根据配置动态拼接域名
+    #     base_url = getattr(settings, "MEDIA_DOMAIN", None)
+    #     if base_url:
+    #         return f"{base_url}{obj.avatar.url}"
+
+    #     # ✅ 默认退回相对路径
+    #     return obj.avatar.url
+    def get_avatar(self, obj):
+        if not obj.avatar:
+            return None
+        # 使用固定 MEDIA_DOMAIN
+        base = getattr(settings, 'MEDIA_DOMAIN', None)
+        if base:
+            return f"{base}{obj.avatar.url}"
+        return obj.avatar.url
 
 
 class UserUpdateSerializer(serializers.ModelSerializer):
@@ -110,7 +156,7 @@ class UserUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = (
-            'first_name', 'last_name', 'phone', 'bio', 'avatar',
+            'first_name', 'last_name', 'phone', 'bio',
             'location', 'date_of_birth', 'interests', 'skills',
             'languages', 'email_notifications', 'sms_notifications',
             'push_notifications'

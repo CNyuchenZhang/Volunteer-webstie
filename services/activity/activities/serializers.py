@@ -32,14 +32,30 @@ class ActivitySerializer(serializers.ModelSerializer):
 
 
 class ActivityCreateSerializer(serializers.ModelSerializer):
+    images = serializers.ListField(
+        child=serializers.ImageField(),
+        required=False,
+        allow_empty=True,
+        write_only=True
+    )
+    
     class Meta:
         model = Activity
         fields = [
-            'title', 'description', 'category', 'location',
-            'start_date', 'end_date', 'max_participants'
+            'title', 'description', 'full_description', 'category', 'location', 'address',
+            'start_date', 'end_date', 'registration_deadline', 'max_participants', 'min_participants',
+            'required_skills', 'age_requirement', 'physical_requirements', 'equipment_needed',
+            'images'
         ]
     
     def create(self, validated_data):
+        import os
+        from django.core.files.storage import default_storage
+        from django.conf import settings
+        
+        # 提取images字段（如果存在）
+        images_data = validated_data.pop('images', [])
+        
         # 设置组织者信息
         request = self.context.get('request')
         if request and hasattr(request, 'user') and request.user.is_authenticated:
@@ -58,6 +74,22 @@ class ActivityCreateSerializer(serializers.ModelSerializer):
         validated_data['status'] = 'pending_approval'
         validated_data['approval_status'] = 'pending'
         
+        # 处理多个图片上传
+        image_paths = []
+        if images_data:
+            for idx, image_file in enumerate(images_data):
+                # 生成文件名
+                ext = os.path.splitext(image_file.name)[1]
+                filename = f"activity_{validated_data['organizer_id']}_{idx}_{image_file.name}"
+                filepath = os.path.join('activities', filename)
+                
+                # 保存文件
+                saved_path = default_storage.save(filepath, image_file)
+                # 保存相对路径到数组
+                image_paths.append(f'/media/{saved_path}')
+        
+        validated_data['images'] = image_paths
+        
         return super().create(validated_data)
 
 
@@ -70,7 +102,10 @@ class ActivityApprovalSerializer(serializers.ModelSerializer):
         # 如果批准，更新状态为已批准
         if validated_data.get('approval_status') == 'approved':
             instance.status = 'approved'
-            instance.approved_by_id = self.context.get('request').user.id
+            # 安全地获取用户ID
+            request = self.context.get('request')
+            if request and hasattr(request, 'user') and request.user.is_authenticated:
+                instance.approved_by_id = request.user.id
             from django.utils import timezone
             instance.approved_at = timezone.now()
         elif validated_data.get('approval_status') == 'rejected':

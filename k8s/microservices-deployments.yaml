@@ -3,9 +3,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: user-service
-  namespace: volunteer-platform
-  labels:
-    app: user-service
+  namespace: mywork
 spec:
   replicas: 3  # 增加副本数实现负载均衡
   selector:
@@ -18,59 +16,25 @@ spec:
     spec:
       containers:
       - name: user-service
-        image: localhost:5000/volunteer-platform/user-service
+        image: docker.io/jsrgzyc/user-service:latest
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8000
-        env:
-        - name: DEBUG
-          value: "False"
-        - name: DB_HOST
-          valueFrom:
-            configMapKeyRef:
-              name: volunteer-config
-              key: DB_HOST
-        - name: DB_PORT
-          valueFrom:
-            configMapKeyRef:
-              name: volunteer-config
-              key: DB_PORT
-        - name: DB_USER
-          valueFrom:
-            configMapKeyRef:
-              name: volunteer-config
-              key: DB_USER
-        - name: DB_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: volunteer-secrets
-              key: DB_PASSWORD
-        - name: REDIS_URL
-          valueFrom:
-            configMapKeyRef:
-              name: volunteer-config
-              key: REDIS_URL
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "200m"
-          limits:
-            memory: "512Mi"
-            cpu: "500m"
         livenessProbe:
           httpGet:
-            path: /health
+            path: /api/v1/health/
             port: 8000
-          initialDelaySeconds: 30    
-          periodSeconds: 10         
-          timeoutSeconds: 5
+          initialDelaySeconds: 20
+          periodSeconds: 10
+          timeoutSeconds: 3
           failureThreshold: 3
-          successThreshold: 1
         readinessProbe:
           httpGet:
-            path: /health
+            path: /api/v1/health/
             port: 8000
           initialDelaySeconds: 5
           periodSeconds: 5
+          timeoutSeconds: 2
 
 ---
 # Activity Service Deployment
@@ -78,9 +42,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: activity-service
-  namespace: volunteer-platform
-  labels:
-    app: activity-service
+  namespace: mywork
 spec:
   replicas: 3  # 增加副本数实现负载均衡
   selector:
@@ -93,69 +55,25 @@ spec:
     spec:
       containers:
       - name: activity-service
-        image: localhost:5000/volunteer-platform/activity-service
+        image: docker.io/jsrgzyc/activity-service:latest
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8000
-        env:
-        - name: DEBUG
-          value: "False"
-        - name: DB_HOST
-          valueFrom:
-            configMapKeyRef:
-              name: volunteer-config
-              key: DB_HOST
-        - name: DB_PORT
-          valueFrom:
-            configMapKeyRef:
-              name: volunteer-config
-              key: DB_PORT
-        - name: DB_USER
-          valueFrom:
-            configMapKeyRef:
-              name: volunteer-config
-              key: DB_USER
-        - name: DB_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: volunteer-secrets
-              key: DB_PASSWORD
-        - name: REDIS_URL
-          valueFrom:
-            configMapKeyRef:
-              name: volunteer-config
-              key: REDIS_URL
-        - name: USER_SERVICE_URL
-          valueFrom:
-            configMapKeyRef:
-              name: volunteer-config
-              key: USER_SERVICE_URL
-        - name: NOTIFICATION_SERVICE_URL
-          valueFrom:
-            configMapKeyRef:
-              name: volunteer-config
-              key: NOTIFICATION_SERVICE_URL
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "200m"
-          limits:
-            memory: "512Mi"
-            cpu: "500m"
         livenessProbe:
           httpGet:
-            path: /health
+            path: /api/v1/health/
             port: 8000
-          initialDelaySeconds: 30    
-          periodSeconds: 10         
-          timeoutSeconds: 5
+          initialDelaySeconds: 20
+          periodSeconds: 10
+          timeoutSeconds: 3
           failureThreshold: 3
-          successThreshold: 1
         readinessProbe:
           httpGet:
-            path: /health
+            path: /api/v1/health/
             port: 8000
           initialDelaySeconds: 5
           periodSeconds: 5
+          timeoutSeconds: 2
 
 ---
 # Notification Service Deployment
@@ -163,11 +81,9 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: notification-service
-  namespace: volunteer-platform
-  labels:
-    app: notification-service
+  namespace: mywork
 spec:
-  replicas: 2  # 通知服务保持 2 个副本
+  replicas: 3  # 通知服务保持 2 个副本
   selector:
     matchLabels:
       app: notification-service
@@ -178,343 +94,22 @@ spec:
     spec:
       containers:
       - name: notification-service
-        image: localhost:5000/volunteer-platform/notification-service
+        image: docker.io/jsrgzyc/notification-service:latest
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8000
-        env:
-        - name: DEBUG
-          value: "False"
-        - name: DB_HOST
-          valueFrom:
-            configMapKeyRef:
-              name: volunteer-config
-              key: DB_HOST
-        - name: DB_PORT
-          valueFrom:
-            configMapKeyRef:
-              name: volunteer-config
-              key: DB_PORT
-        - name: DB_USER
-          valueFrom:
-            configMapKeyRef:
-              name: volunteer-config
-              key: DB_USER
-        - name: DB_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: volunteer-secrets
-              key: DB_PASSWORD
-        - name: REDIS_URL
-          valueFrom:
-            configMapKeyRef:
-              name: volunteer-config
-              key: REDIS_URL
-        - name: RABBITMQ_URL
-          valueFrom:
-            configMapKeyRef:
-              name: volunteer-config
-              key: RABBITMQ_URL
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "200m"
-          limits:
-            memory: "512Mi"
-            cpu: "500m"
         livenessProbe:
           httpGet:
-            path: /health
+            path: /api/v1/health/
             port: 8000
-          initialDelaySeconds: 30    
-          periodSeconds: 10         
-          timeoutSeconds: 5
-          failureThreshold: 3
-          successThreshold: 1
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 8000
-          initialDelaySeconds: 5
-          periodSeconds: 5
-
----
-# Payment Service Deployment
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: payment-service
-  namespace: volunteer-platform
-  labels:
-    app: payment-service
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: payment-service
-  template:
-    metadata:
-      labels:
-        app: payment-service
-    spec:
-      containers:
-      - name: payment-service
-        image: localhost:5000/volunteer-platform/payment-service
-        ports:
-        - containerPort: 8000
-        env:
-        - name: DEBUG
-          value: "False"
-        - name: DB_HOST
-          valueFrom:
-            configMapKeyRef:
-              name: volunteer-config
-              key: DB_HOST
-        - name: DB_PORT
-          valueFrom:
-            configMapKeyRef:
-              name: volunteer-config
-              key: DB_PORT
-        - name: DB_USER
-          valueFrom:
-            configMapKeyRef:
-              name: volunteer-config
-              key: DB_USER
-        - name: DB_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: volunteer-secrets
-              key: DB_PASSWORD
-        - name: REDIS_URL
-          valueFrom:
-            configMapKeyRef:
-              name: volunteer-config
-              key: REDIS_URL
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "200m"
-          limits:
-            memory: "512Mi"
-            cpu: "500m"
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8000
-          initialDelaySeconds: 30    
-          periodSeconds: 10         
-          timeoutSeconds: 5
-          failureThreshold: 3
-          successThreshold: 1
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 8000
-          initialDelaySeconds: 5
-          periodSeconds: 5
-
----
-# Analytics Service Deployment
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: analytics-service
-  namespace: volunteer-platform
-  labels:
-    app: analytics-service
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: analytics-service
-  template:
-    metadata:
-      labels:
-        app: analytics-service
-    spec:
-      containers:
-      - name: analytics-service
-        image: localhost:5000/volunteer-platform/analytics-service
-        ports:
-        - containerPort: 8000
-        env:
-        - name: DEBUG
-          value: "False"
-        - name: DB_HOST
-          valueFrom:
-            configMapKeyRef:
-              name: volunteer-config
-              key: DB_HOST
-        - name: DB_PORT
-          valueFrom:
-            configMapKeyRef:
-              name: volunteer-config
-              key: DB_PORT
-        - name: DB_USER
-          valueFrom:
-            configMapKeyRef:
-              name: volunteer-config
-              key: DB_USER
-        - name: DB_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: volunteer-secrets
-              key: DB_PASSWORD
-        - name: REDIS_URL
-          valueFrom:
-            configMapKeyRef:
-              name: volunteer-config
-              key: REDIS_URL
-        - name: MONGODB_URL
-          valueFrom:
-            configMapKeyRef:
-              name: volunteer-config
-              key: MONGODB_URL
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "200m"
-          limits:
-            memory: "512Mi"
-            cpu: "500m"
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8000
-          initialDelaySeconds: 30
+          initialDelaySeconds: 20
           periodSeconds: 10
-          timeoutSeconds: 5
+          timeoutSeconds: 3
           failureThreshold: 3
-          successThreshold: 1
         readinessProbe:
           httpGet:
-            path: /health
+            path: /api/v1/health/
             port: 8000
           initialDelaySeconds: 5
           periodSeconds: 5
-
----
-# Recommendation Service Deployment
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: recommendation-service
-  namespace: volunteer-platform
-  labels:
-    app: recommendation-service
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: recommendation-service
-  template:
-    metadata:
-      labels:
-        app: recommendation-service
-    spec:
-      containers:
-      - name: recommendation-service
-        image: localhost:5000/volunteer-platform/recommendation-service
-        ports:
-        - containerPort: 8000
-        env:
-        - name: DEBUG
-          value: "False"
-        - name: DB_HOST
-          valueFrom:
-            configMapKeyRef:
-              name: volunteer-config
-              key: DB_HOST
-        - name: DB_PORT
-          valueFrom:
-            configMapKeyRef:
-              name: volunteer-config
-              key: DB_PORT
-        - name: DB_USER
-          valueFrom:
-            configMapKeyRef:
-              name: volunteer-config
-              key: DB_USER
-        - name: DB_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: volunteer-secrets
-              key: DB_PASSWORD
-        - name: REDIS_URL
-          valueFrom:
-            configMapKeyRef:
-              name: volunteer-config
-              key: REDIS_URL
-        - name: MONGODB_URL
-          valueFrom:
-            configMapKeyRef:
-              name: volunteer-config
-              key: MONGODB_URL
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "200m"
-          limits:
-            memory: "512Mi"
-            cpu: "500m"
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8000
-          initialDelaySeconds: 30    
-          periodSeconds: 10         
-          timeoutSeconds: 5
-          failureThreshold: 3
-          successThreshold: 1
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 8000
-          initialDelaySeconds: 5
-          periodSeconds: 5
-
----
-# Frontend Deployment
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: frontend
-  namespace: volunteer-platform
-  labels:
-    app: frontend
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: frontend
-  template:
-    metadata:
-      labels:
-        app: frontend
-    spec:
-      containers:
-      - name: frontend
-        image: localhost:5000/volunteer-platform/frontend
-        ports:
-        - containerPort: 80
-        env:
-        - name: REACT_APP_API_URL
-          value: "/api/v1"
-        resources:
-          requests:
-            memory: "128Mi"
-            cpu: "100m"
-          limits:
-            memory: "256Mi"
-            cpu: "200m"
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 80
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 80
-          initialDelaySeconds: 5
-          periodSeconds: 5
+          timeoutSeconds: 2

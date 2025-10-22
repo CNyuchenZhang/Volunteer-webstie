@@ -15,10 +15,8 @@ SECRET_KEY = config('SECRET_KEY', default='django-insecure-change-me-in-producti
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=True, cast=bool)
 
-# 允许主机名（K8s 集群内互访需要放宽限制）。
-# 优先从环境变量 ALLOWED_HOSTS 读取（逗号分隔），默认放开为 '*'
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*', cast=lambda v: [s.strip() for s in v.split(',')])
-
+# ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='172.16.80.22,localhost,127.0.0.1,user-service', cast=lambda v: [s.strip() for s in v.split(',')])
+ALLOWED_HOSTS = ['*']
 # Application definition
 DJANGO_APPS = [
     'django.contrib.admin',
@@ -76,19 +74,28 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'user_service.wsgi.application'
 
-# 数据库配置（适配 K8s 集群中的 PostgreSQL）
-# - Service 名称为 postgres（见 k8s/postgres-deployment.yaml）
-# - 优先读取 DB_* 环境变量；兼容 POSTGRES_* 命名；默认库名 volunteer_db
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': config('DB_NAME', default=config('POSTGRES_DB', default='volunteer_db')),
-        'USER': config('DB_USER', default=config('POSTGRES_USER', default='postgres')),
-        'PASSWORD': config('DB_PASSWORD', default=config('POSTGRES_PASSWORD', default='password')),
-        'HOST': config('DB_HOST', default=config('POSTGRES_HOST', default='postgres')),
-        'PORT': config('DB_PORT', default=config('POSTGRES_PORT', default='5432')),
+# Database
+# 支持使用 SQLite 或 PostgreSQL
+USE_SQLITE = config('USE_SQLITE', default=True, cast=bool)
+
+if USE_SQLITE:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': config('DB_NAME', default='volunteer_user'),
+            'USER': config('DB_USER', default='postgres'),
+            'PASSWORD': config('DB_PASSWORD', default='password'),
+            'HOST': config('DB_HOST', default='localhost'),
+            'PORT': config('DB_PORT', default='5432'),
+        }
+    }
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -114,11 +121,17 @@ USE_TZ = True
 
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = '/static/'
+# STATIC_URL = 'http://47.79.239.219:30081/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 # Media files
 MEDIA_URL = '/media/'
+# MEDIA_URL = 'http://47.79.239.219:30081/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+MEDIA_DOMAIN = 'http://47.79.239.219:30081' 
+
+
+
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
@@ -129,8 +142,8 @@ AUTH_USER_MODEL = 'users.User'
 # REST Framework
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.SessionAuthentication',
         'rest_framework.authentication.TokenAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
@@ -143,15 +156,47 @@ REST_FRAMEWORK = {
         'rest_framework.filters.OrderingFilter',
     ],
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    # 对于前后端分离的 API，可以禁用 CSRF 检查（使用 Token 认证）
+    'DEFAULT_RENDERER_CLASSES': [
+        'rest_framework.renderers.JSONRenderer',
+    ],
 }
 
-# CORS 设置（适配 K8s 场景）
-# - 默认放开所有来源，避免 Ingress/网关域名与后端域名不同导致的跨域问题
-# - 如需严格控制，可通过环境变量 CORS_ALLOWED_ORIGINS 传入逗号分隔域名列表
-#   例如：CORS_ALLOWED_ORIGINS="https://www.example.com,https://app.example.com"
-CORS_ALLOW_ALL_ORIGINS = config('CORS_ALLOW_ALL_ORIGINS', default=True, cast=bool)
-CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='', cast=lambda v: [s.strip() for s in v.split(',') if s.strip()])
-CORS_ALLOW_CREDENTIALS = config('CORS_ALLOW_CREDENTIALS', default=True, cast=bool)
+# CORS settings - 支持通过 nginx 网关和 ingress 访问
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+    "http://localhost:5173",  # Vite 默认端口
+    "http://127.0.0.1:5173",
+    "http://volunteer-platform.local",
+    "http://localhost",
+    "http://volunteer-platform.com",
+    "https://volunteer-platform.com",
+    "https://volunteer-platform.local",
+]
+
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_ALL_ORIGINS = False  # 只允许上述源
+
+# CSRF 设置（前后端分离，禁用 CSRF 或使用 Token）
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://volunteer-platform.local",
+    "http://localhost",
+    "http://volunteer-platform.com",
+    "https://volunteer-platform.com",
+    "https://volunteer-platform.local",
+]
+
+# 对于 API，可以禁用 CSRF（因为使用 Token 认证）
+# 或者在特定视图上使用 csrf_exempt
 
 # Spectacular settings
 SPECTACULAR_SETTINGS = {
@@ -162,19 +207,22 @@ SPECTACULAR_SETTINGS = {
     'COMPONENT_SPLIT_REQUEST': True,
 }
 
-# Celery 配置（移除 Redis，改用内存队列，便于无外部依赖地运行）
-CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='memory://')
-CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default='cache+memory://')
+# Celery Configuration
+CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default='redis://localhost:6379/0')
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
 
-# 缓存配置（移除 Redis，改用本地内存缓存）
+# Cache Configuration
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'unique-user-service-cache',
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': config('REDIS_URL', default='redis://localhost:6379/1'),
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+        }
     }
 }
 
