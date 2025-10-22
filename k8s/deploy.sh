@@ -122,15 +122,6 @@ check_status() {
     echo "=== Deployments ==="
     kubectl get deployments -n $NAMESPACE
 
-    echo "=== PersistentVolumeClaims ==="
-    kubectl get pvc -n $NAMESPACE
-    
-    echo "=== PersistentVolumes ==="
-    kubectl get pv | grep $NAMESPACE
-    
-    # 检查 PVC 的详细状态
-    echo "=== PVC 详细信息 ==="
-    kubectl describe pvc postgres-pvc -n $NAMESPACE | grep -E "Status:|Capacity:|Access Modes:"
 }
 
 # 获取访问信息
@@ -155,14 +146,14 @@ get_access_info() {
 delete_deployment() {
     echo "🗑️  开始删除部署..."
     
-    echo "1/9 删除 Ingress..."
+    echo "1/7 删除 Ingress..."
     kubectl delete -f ingress.yaml --ignore-not-found=true
     kubectl delete -f ingress-nginx-controller.yaml --ignore-not-found=true
     
-    echo "2/9 删除 Nginx 网关..."
+    echo "2/7 删除 Nginx 网关..."
     kubectl delete -f nginx-deployment.yaml --ignore-not-found=true
     
-    echo "3/9 删除微服务..."
+    echo "3/7 删除微服务..."
     if kubectl get services -n $NAMESPACE 2>/dev/null | grep -q .; then
         kubectl delete -f microservices-services.yaml --ignore-not-found=true
         kubectl delete -f frontend-deployment.yaml --ignore-not-found=true
@@ -170,14 +161,14 @@ delete_deployment() {
         kubectl wait --for=delete --all services --timeout=30s -n $NAMESPACE 2>/dev/null || true
     fi
     
-    echo "4/9 删除微服务部署..."
+    echo "4/7 删除微服务部署..."
     if kubectl get deployments -n $NAMESPACE 2>/dev/null | grep -q .; then
         kubectl delete -f microservices-deployments.yaml --ignore-not-found=true
         echo "等待 Pod 删除完成..."
         kubectl wait --for=delete --all pods --timeout=60s -n $NAMESPACE 2>/dev/null || true
     fi
 
-    echo "5/9 删除 Postgres 资源..."
+    echo "5/7 删除 Postgres 资源..."
     if kubectl get deployments -n $NAMESPACE | grep -q postgres; then
         echo "删除 Postgres 部署和服务..."
         kubectl delete -f postgres-deployment.yaml --ignore-not-found=true
@@ -185,21 +176,10 @@ delete_deployment() {
         kubectl wait --for=delete deployment/postgres --timeout=60s -n $NAMESPACE 2>/dev/null || true
     fi
     
-    echo "6/9 删除持久卷声明..."
-    if kubectl get pvc -n $NAMESPACE 2>/dev/null | grep -q .; then
-        kubectl delete pvc --all -n $NAMESPACE
-        echo "等待 PVC 删除完成..."
-        kubectl wait --for=delete --all pvc --timeout=60s -n $NAMESPACE 2>/dev/null || true
-    fi
-
-    # 可选：删除持久卷（如果需要完全清理）
-    echo "删除持久卷..."
-    kubectl delete pv postgres-pv --ignore-not-found=true
-    
-    echo "7/8 删除配置映射..."
+    echo "6/7 删除配置映射..."
     kubectl delete -f configmap.yaml --ignore-not-found=true
     
-    echo "8/8 删除命名空间..."
+    echo "7/7 删除命名空间..."
     kubectl delete -f namespace.yaml --ignore-not-found=true
     
     echo "删除部署完成"
@@ -232,7 +212,6 @@ case $OPERATION in
         wait_for_base_services
         deploy_gateway
         wait_for_gateway
-        deploy_ingress_controller
         deploy_ingress
         check_status
         get_access_info

@@ -60,44 +60,7 @@ spec:
           periodSeconds: 5
       volumes:
       - name: postgres-data
-        persistentVolumeClaim:
-          claimName: postgres-pvc
-
----
-# PVC for PostgreSQL
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: postgres-pvc
-  namespace: mywork
-  labels:
-    app: postgres
-    type: database-storage
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 10Gi
-  storageClassName: standard
-
----
-# PV for PostgreSQL
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: postgres-pv
-  labels:
-    type: database-storage
-spec:
-  capacity:
-    storage: 10Gi
-  accessModes:
-    - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: standard
-  hostPath:
-    path: "/mnt/data"
+        emptyDir: {}
 
 ---
 # PostgreSQL Service
