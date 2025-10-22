@@ -39,18 +39,6 @@ spec:
             port:
               number: 80
               
-  # 服务器IP直接访问
-  - host: 47.84.114.53
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: nginx-gateway-service
-            port:
-              number: 80
-              
   # 通配符域名支持
   - host: "*.volunteer-platform.com"
     http:
