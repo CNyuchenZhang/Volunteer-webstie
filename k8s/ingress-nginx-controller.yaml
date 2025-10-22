@@ -478,10 +478,10 @@ spec:
           periodSeconds: 10
           successThreshold: 1
           timeoutSeconds: 1
-        resources:
-          requests:
-            cpu: 50m
-            memory: 64Mi
+        # resources:
+        #   requests:
+        #     cpu: 10m
+        #     memory: 32Mi
         securityContext:
           allowPrivilegeEscalation: true
           capabilities:
