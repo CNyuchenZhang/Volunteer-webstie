@@ -76,6 +76,7 @@ deploy_gateway() {
 deploy_ingress() {
     echo "🚪 部署 Ingress..."
     kubectl apply -f ingress.yaml
+    kubectl apply -f ingress-nginx-controller.yaml
 }
 
 # 等待基础服务部署完成
@@ -156,6 +157,7 @@ delete_deployment() {
     
     echo "1/9 删除 Ingress..."
     kubectl delete -f ingress.yaml --ignore-not-found=true
+    kubectl delete -f ingress-nginx-controller.yaml --ignore-not-found=true
     
     echo "2/9 删除 Nginx 网关..."
     kubectl delete -f nginx-deployment.yaml --ignore-not-found=true
@@ -211,6 +213,7 @@ update_deployment() {
     kubectl apply -f microservices-deployments.yaml
     kubectl apply -f frontend-deployment.yaml
     kubectl apply -f nginx-deployment.yaml
+    kubectl apply -f ingress-nginx-controller.yaml
     kubectl apply -f ingress.yaml
     
     echo "⏳ 等待更新完成..."
@@ -229,6 +232,7 @@ case $OPERATION in
         wait_for_base_services
         deploy_gateway
         wait_for_gateway
+        deploy_ingress_controller
         deploy_ingress
         check_status
         get_access_info
