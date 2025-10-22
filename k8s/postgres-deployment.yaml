@@ -24,17 +24,11 @@ spec:
         - containerPort: 5432
         env:
         - name: POSTGRES_DB
-          value: "volunteer_db"
+          value: "volunteer_platform"
         - name: POSTGRES_USER
-          valueFrom:
-            configMapKeyRef:
-              name: volunteer-config
-              key: DB_USER
+          value: "postgres"
         - name: POSTGRES_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: volunteer-secrets
-              key: DB_PASSWORD
+          value: "password"
         resources:
           requests:
             memory: "512Mi"

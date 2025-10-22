@@ -89,7 +89,7 @@ else:
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
-            'NAME': config('DB_NAME', default='volunteer_user'),
+            'NAME': config('DB_NAME', default='volunteer_platform'),
             'USER': config('DB_USER', default='postgres'),
             'PASSWORD': config('DB_PASSWORD', default='password'),
             'HOST': config('DB_HOST', default='localhost'),
