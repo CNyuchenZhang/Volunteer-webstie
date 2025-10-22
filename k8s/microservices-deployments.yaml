@@ -58,6 +58,7 @@ spec:
         image: docker.io/jsrgzyc/activity-service:latest
         imagePullPolicy: Always
         ports:
+        
         - containerPort: 8000
         livenessProbe:
           httpGet:

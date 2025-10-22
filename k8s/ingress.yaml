@@ -26,9 +26,21 @@ spec:
             name: nginx-gateway-service
             port:
               number: 80
-
+              
   # 开发环境或本地测试
   - host: localhost
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: nginx-gateway-service
+            port:
+              number: 80
+              
+  # 服务器IP直接访问
+  - host: 47.84.114.53
     http:
       paths:
       - path: /
