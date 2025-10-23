@@ -108,31 +108,153 @@ jobs:
           git reset --hard HEAD
           git pull origin main
           
-          # 停止现有服务
-          echo "🛑 停止现有服务..."
-          docker compose down
+          # 构建镜像
+          echo "🔨 构建镜像..."
+          docker compose build
           
-          # 清理旧镜像
-          echo "🧹 清理旧镜像..."
-          docker image prune -f
+          # 检查现有镜像
+          echo "1. 检查现有镜像..."
+          docker images | grep jsrgzyc
           
-          # 构建并启动服务
-          echo "🔨 构建并启动服务..."
-          docker compose up -d --build
+          # 导入镜像到containerd
+          echo "2. 导入镜像到containerd..."
           
-          # 等待服务启动
-          echo "⏳ 等待服务启动..."
-          sleep 30
+          echo "导入user-service..."
+          if docker images | grep -q "jsrgzyc/user-service"; then
+              docker save jsrgzyc/user-service:latest | ctr -n k8s.io images import -
+              echo "✅ user-service导入成功"
+          else
+              echo "❌ user-service镜像不存在"
+          fi
+          
+          echo "导入activity-service..."
+          if docker images | grep -q "jsrgzyc/activity-service"; then
+              docker save jsrgzyc/activity-service:latest | ctr -n k8s.io images import -
+              echo "✅ activity-service导入成功"
+          else
+              echo "❌ activity-service镜像不存在"
+          fi
+          
+          echo "导入notification-service..."
+          if docker images | grep -q "jsrgzyc/notification-service"; then
+              docker save jsrgzyc/notification-service:latest | ctr -n k8s.io images import -
+              echo "✅ notification-service导入成功"
+          else
+              echo "❌ notification-service镜像不存在"
+          fi
+          
+          echo "导入frontend..."
+          if docker images | grep -q "jsrgzyc/frontend"; then
+              docker save jsrgzyc/frontend:latest | ctr -n k8s.io images import -
+              echo "✅ frontend导入成功"
+          else
+              echo "❌ frontend镜像不存在"
+          fi
+          
+          # 检查导入结果
+          echo "3. 检查导入结果..."
+          ctr -n k8s.io images list | grep jsrgzyc
+          
+          # 检查 kubectl 是否可用
+          echo "🔍 检查 kubectl 是否可用..."
+          if ! command -v kubectl &> /dev/null; then
+              echo "❌ kubectl 未安装或不在 PATH 中"
+              exit 1
+          else
+              echo "✅ kubectl 可用"
+          fi
+          
+          # 检查集群连接
+          echo "🔗 检查 Kubernetes 集群连接..."
+          if kubectl cluster-info >/dev/null 2>&1; then
+              echo "✅ Kubernetes 集群连接正常"
+          else
+              echo "❌ 无法连接到 Kubernetes 集群，请检查 kubeconfig、网络与集群状态"
+              exit 1
+          fi
+          
+          # 创建命名空间
+          echo "📦 创建命名空间..."
+          kubectl apply -f k8s/namespace.yaml
+          
+          # 创建配置
+          echo "⚙️ 创建配置..."
+          kubectl apply -f k8s/configmap.yaml
+          
+          # 部署数据库服务
+          echo "🗄️ 部署数据库服务..."
+          kubectl apply -f k8s/postgres-deployment.yaml
+          
+          # 部署微服务
+          echo "🔧 部署微服务..."
+          kubectl apply -f k8s/microservices-deployments.yaml
+          kubectl apply -f k8s/microservices-services.yaml
+          
+          # 部署前端
+          echo "🔧 部署前端..."
+          kubectl apply -f k8s/frontend-deployment.yaml
+          
+          # 等待基础服务部署完成
+          echo "⏳ 等待基础服务部署完成..."
+          base_deployments=(
+              "postgres"
+              "user-service"
+              "activity-service"
+              "notification-service"
+              "frontend-service"
+          )
+          
+          for deployment in "${base_deployments[@]}"; do
+              echo "等待 $deployment 就绪..."
+              kubectl wait --for=condition=available --timeout=300s deployment/$deployment -n mywork
+          done
+          
+          # 部署 nginx 网关
+          echo "🌐 部署 nginx 网关..."
+          kubectl apply -f k8s/nginx-deployment.yaml
+          
+          # 等待nginx网关部署完成
+          echo "⏳ 等待 nginx 网关部署完成..."
+          kubectl wait --for=condition=available --timeout=300s deployment/nginx-gateway -n mywork
+          
+          # 部署 Ingress
+          echo "🚪 部署 Ingress..."
+          kubectl apply -f k8s/ingress-nginx-controller.yaml
+          kubectl apply -f k8s/ingress.yaml
           
           # 检查服务状态
           echo "📊 检查服务状态..."
-          docker compose ps
           
-          # 运行健康检查
-          echo "🏥 运行健康检查..."
-          docker compose exec -T user-service python manage.py check --settings=user_service.settings.base || echo "用户服务健康检查失败"
-          docker compose exec -T activity-service python manage.py check --settings=activity_service.settings.base || echo "活动服务健康检查失败"
-          docker compose exec -T notification-service python manage.py check --settings=notification_service.settings || echo "通知服务健康检查失败"
+          echo "=== Pods ==="
+          kubectl get pods -n mywork
+          
+          echo "=== Services ==="
+          kubectl get services -n mywork
+          
+          echo "=== Ingress ==="
+          kubectl get ingress -n mywork
+          
+          echo "=== ConfigMaps ==="
+          kubectl get configmaps -n mywork
+          
+          echo "=== Deployments ==="
+          kubectl get deployments -n mywork
+          
+          # 获取访问信息
+          echo "🔗 获取访问信息..."
+          
+          # 获取 Ingress 信息
+          echo "=== Ingress 访问地址 ==="
+          kubectl get ingress -n mywork -o wide
+          
+          # 获取 NodePort 信息
+          echo "=== NodePort 访问地址 ==="
+          kubectl get service nginx-gateway-nodeport -n mywork -o wide
+          
+          # 获取集群 IP
+          CLUSTER_IP=$(kubectl get service nginx-gateway-service -n mywork -o jsonpath='{.spec.clusterIP}')
+          echo "=== 集群内访问地址 ==="
+          echo "http://$CLUSTER_IP"
           
           echo "✅ 部署完成！"
           
@@ -146,3 +268,4 @@ jobs:
         echo "| 通知服务 | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
         echo "| 前端服务 | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
         echo "| Nginx网关 | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
+        echo "| Ingress | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
