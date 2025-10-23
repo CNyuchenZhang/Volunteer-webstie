@@ -366,39 +366,27 @@ spec:
 
 ### 2. 缓存层优化
 
-#### Redis缓存配置
-```yaml
-# Redis缓存服务
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: redis-cache
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: redis
-  template:
-    spec:
-      containers:
-      - name: redis
-        image: redis:7-alpine
-        ports:
-        - containerPort: 6379
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "100m"
-          limits:
-            memory: "512Mi"
-            cpu: "200m"
+#### Nginx缓存策略
+```nginx
+# 静态资源缓存
+location ~* \.(jpg|jpeg|png|gif|ico|css|js)$ {
+    expires 1y;
+    add_header Cache-Control "public, immutable";
+}
+
+# API响应缓存
+location /api/v1/activities/ {
+    proxy_cache my_cache;
+    proxy_cache_valid 200 5m;
+    proxy_cache_key $scheme$proxy_host$request_uri;
+}
 ```
 
 #### 缓存策略
-- **用户会话缓存**：Redis存储用户登录状态
-- **热点数据缓存**：频繁访问的活动数据
-- **API响应缓存**：减少数据库查询
-- **静态资源缓存**：CDN加速图片和文件
+- **静态资源缓存**：图片、CSS、JS文件长期缓存
+- **API响应缓存**：热点数据短期缓存
+- **浏览器缓存**：减少重复请求
+- **Nginx缓存**：减少后端服务压力
 
 ### 3. 数据库优化
 
@@ -422,57 +410,36 @@ DATABASES = {
 }
 ```
 
-### 4. 监控告警系统
+### 4. 基础监控系统
 
-#### Prometheus监控
-```yaml
-# Prometheus配置
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: prometheus-config
-data:
-  prometheus.yml: |
-    global:
-      scrape_interval: 15s
-    scrape_configs:
-    - job_name: 'kubernetes-pods'
-      kubernetes_sd_configs:
-      - role: pod
-    - job_name: 'nginx-gateway'
-      static_configs:
-      - targets: ['nginx-gateway-service:80']
+#### Kubernetes原生监控
+```bash
+# 查看Pod状态
+kubectl get pods -n mywork
+
+# 查看服务状态
+kubectl get services -n mywork
+
+# 查看资源使用情况
+kubectl top pods -n mywork
+kubectl top nodes
 ```
 
-#### Grafana仪表板
-- **系统指标**：CPU、内存、网络、磁盘使用率
-- **应用指标**：请求数、响应时间、错误率
-- **业务指标**：用户数、活动数、消息数
-- **告警规则**：异常检测、阈值告警
+#### 日志监控
+```bash
+# 查看应用日志
+kubectl logs -f deployment/user-service -n mywork
+kubectl logs -f deployment/nginx-gateway -n mywork
 
-### 5. 链路追踪
-
-#### Jaeger分布式追踪
-```yaml
-# Jaeger配置
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: jaeger
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: jaeger
-  template:
-    spec:
-      containers:
-      - name: jaeger
-        image: jaegertracing/all-in-one:latest
-        ports:
-        - containerPort: 16686
-        - containerPort: 14268
+# 查看系统日志
+kubectl logs -f deployment/activity-service -n mywork
 ```
+
+#### 基础指标监控
+- **Pod状态**：运行状态、重启次数、资源使用
+- **服务健康**：端点状态、负载均衡情况
+- **应用日志**：错误日志、访问日志、性能日志
+- **系统资源**：CPU、内存、网络、存储使用率
 
 ## 📈 性能测试
 
@@ -505,9 +472,9 @@ Time per request:       1.000 [ms] (mean, across all concurrent requests)
 
 #### 应用优化
 - **代码优化**：减少不必要的数据库查询
-- **缓存策略**：合理使用Redis缓存
-- **异步处理**：使用Celery处理耗时任务
-- **静态资源**：CDN加速静态文件
+- **缓存策略**：合理使用Nginx缓存
+- **异步处理**：使用Django异步任务处理
+- **静态资源**：Nginx直接服务静态文件
 
 ## 🎯 总结
 
@@ -519,8 +486,8 @@ Time per request:       1.000 [ms] (mean, across all concurrent requests)
 
 ### 未来优化方向
 1. **自动扩缩容**：基于CPU/内存使用率自动调整副本数
-2. **缓存优化**：Redis集群 + CDN加速
-3. **监控完善**：Prometheus + Grafana + Jaeger全链路监控
+2. **缓存优化**：Nginx缓存优化 + CDN加速
+3. **监控完善**：Kubernetes原生监控 + 日志分析
 4. **安全加固**：TLS加密 + 访问控制 + 安全扫描
 
 通过以上配置和优化策略，系统能够满足高并发、高可用、高性能的业务需求，为志愿者平台提供稳定可靠的技术支撑。
