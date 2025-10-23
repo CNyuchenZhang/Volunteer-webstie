@@ -148,7 +148,6 @@ delete_deployment() {
     
     echo "1/7 删除 Ingress..."
     kubectl delete -f ingress.yaml --ignore-not-found=true
-    kubectl delete -f ingress-nginx-controller.yaml --ignore-not-found=true
     
     echo "2/7 删除 Nginx 网关..."
     kubectl delete -f nginx-deployment.yaml --ignore-not-found=true

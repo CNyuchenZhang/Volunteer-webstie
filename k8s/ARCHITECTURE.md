@@ -9,7 +9,7 @@
 ### 详细流程
 
 1. **外部访问**
-   - 用户通过浏览器访问 `http://volunteer-platform.local` 或 `http://localhost`
+   - 用户通过浏览器访问 `http://ecsIP:30081`
    - 请求首先到达 Kubernetes Ingress Controller
 
 2. **Ingress 路由**
@@ -38,6 +38,7 @@
 - `frontend-deployment.yaml` - 前端服务部署
 - `nginx-deployment.yaml` - Nginx 网关部署
 - `ingress.yaml` - Ingress 配置
+- `ingress-nginx-controller.yaml` - Ingress controller 配置
 - `deploy.sh` - 部署脚本
 
 ## 访问方式
