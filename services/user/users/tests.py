@@ -137,6 +137,9 @@ class UserLoginTestCase(APITestCase):
             last_name='User',
             role='volunteer'
         )
+        # 确保密码正确设置
+        self.user.set_password('testpass123')
+        self.user.save()
         
     def test_login_success(self):
         """测试登录成功"""
@@ -187,6 +190,9 @@ class UserProfileTestCase(APITestCase):
             last_name='User',
             role='volunteer'
         )
+        # 确保密码正确设置
+        self.user.set_password('testpass123')
+        self.user.save()
         
         # 创建token
         self.token = Token.objects.create(user=self.user)
