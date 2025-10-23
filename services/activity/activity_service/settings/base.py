@@ -127,6 +127,13 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
+# 确保媒体文件目录存在
+import os
+os.makedirs(MEDIA_ROOT, exist_ok=True)
+
+# 媒体文件域名配置
+MEDIA_DOMAIN = config('MEDIA_DOMAIN', default='http://activity-service:8000')
+
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 

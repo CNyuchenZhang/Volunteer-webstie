@@ -18,6 +18,7 @@ class ActivitySerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
     participants_count = serializers.SerializerMethodField()
     available_spots = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
     
     class Meta:
         model = Activity
@@ -29,6 +30,21 @@ class ActivitySerializer(serializers.ModelSerializer):
     
     def get_available_spots(self, obj):
         return obj.get_available_spots()
+    
+    def get_images(self, obj):
+        """返回完整的图片URL"""
+        if not obj.images:
+            return []
+        
+        request = self.context.get('request')
+        if request:
+            # 使用request构建完整URL
+            return [request.build_absolute_uri(image_path) for image_path in obj.images]
+        else:
+            # 如果没有request，使用默认的媒体URL
+            from django.conf import settings
+            base_url = getattr(settings, 'MEDIA_DOMAIN', 'http://activity-service:8000')
+            return [f"{base_url}{image_path}" for image_path in obj.images]
 
 
 class ActivityCreateSerializer(serializers.ModelSerializer):

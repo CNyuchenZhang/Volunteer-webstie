@@ -366,7 +366,7 @@ const ActivitiesPage: React.FC = () => {
                 {activity.images && activity.images.length > 0 && (
                   <div style={{ flexShrink: 0 }}>
                     <Image
-                      src={`http://47.79.239.219:30082${activity.images[0]}`}
+                      src={activity.images[0]}
                       alt={activity.title}
                       width={120}
                       height={120}

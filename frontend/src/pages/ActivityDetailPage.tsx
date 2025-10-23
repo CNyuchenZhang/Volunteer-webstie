@@ -236,7 +236,7 @@ const ActivityDetailPage: React.FC = () => {
                     {activity.images.map((image, index) => (
                       <Image
                         key={index}
-                        src={`http://47.79.239.219:30082${image}`}
+                        src={image}
                         alt={`${activity.title} - ${index + 1}`}
                         width={150}
                         height={150}

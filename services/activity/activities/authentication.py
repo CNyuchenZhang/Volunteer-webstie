@@ -19,7 +19,7 @@ class UserServiceTokenAuthentication(TokenAuthentication):
         try:
             # Call user service to validate token
             response = requests.get(
-                f"{settings.USER_SERVICE_URL}/api/v1/profile/",
+                f"{settings.USER_SERVICE_URL}/api/v1/users/profile/",
                 headers={'Authorization': f'Token {key}'},
                 timeout=5
             )
