@@ -272,5 +272,5 @@ class UserModelTestCase(TestCase):
             role='volunteer'
         )
         
-        self.assertEqual(str(user), 'test@test.com')
+        self.assertEqual(str(user), 'Test User (test@test.com)')
 
