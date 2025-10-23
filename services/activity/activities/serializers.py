@@ -101,8 +101,10 @@ class ActivityCreateSerializer(serializers.ModelSerializer):
                 
                 # 保存文件
                 saved_path = default_storage.save(filepath, image_file)
-                # 保存相对路径到数组
-                image_paths.append(f'/media/{saved_path}')
+                # 保存相对路径到数组，确保以/开头
+                if not saved_path.startswith('/'):
+                    saved_path = '/' + saved_path
+                image_paths.append(saved_path)
         
         validated_data['images'] = image_paths
         
