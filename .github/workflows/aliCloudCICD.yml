@@ -91,13 +91,13 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
-      - name: Deploy to Production
-        uses: appleboy/ssh-action@v0.1.10
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.aliCloud }}
-          script: |
+    - name: Deploy to Production
+      uses: appleboy/ssh-action@v0.1.10
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USER }}
+        key: ${{ secrets.aliCloud }}
+        script: |
           echo "🚀 开始部署 Volunteer Platform..."
           
           # 进入项目目录
@@ -150,11 +150,7 @@ jobs:
               echo "❌ frontend镜像不存在"
           fi
           
-          # 检查导入结果
-          echo "3. 检查导入结果..."
-          ctr -n k8s.io images list | grep jsrgzyc
-          
-          # 验证所有镜像都已导入
+          # 验证镜像导入完成
           echo "🔍 验证镜像导入状态..."
           required_images=(
               "jsrgzyc/user-service:latest"
