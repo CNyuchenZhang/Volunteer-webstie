@@ -105,8 +105,7 @@ jobs:
           
           # 更新代码
           echo "📥 更新代码..."
-          git reset --hard HEAD
-          git pull origin main
+          git pull
           
           # 构建镜像
           echo "🔨 构建镜像..."
@@ -151,9 +150,53 @@ jobs:
               echo "❌ frontend镜像不存在"
           fi
           
-          # 检查导入结果
-          echo "3. 检查导入结果..."
-          ctr -n k8s.io images list | grep jsrgzyc
+          # 验证镜像导入完成
+          echo "🔍 验证镜像导入状态..."
+          required_images=(
+              "jsrgzyc/user-service:latest"
+              "jsrgzyc/activity-service:latest"
+              "jsrgzyc/notification-service:latest"
+              "jsrgzyc/frontend:latest"
+          )
+          
+          # 等待并验证镜像导入完成
+          max_attempts=10
+          attempt=1
+          
+          while [ $attempt -le $max_attempts ]; do
+              echo "检查镜像导入状态 (尝试 $attempt/$max_attempts)..."
+              all_imported=true
+              
+              for image in "${required_images[@]}"; do
+                  if ctr -n k8s.io images list | grep -q "$image"; then
+                      echo "✅ $image 已导入"
+                  else
+                      echo "⏳ $image 尚未导入，等待中..."
+                      all_imported=false
+                  fi
+              done
+              
+              if [ "$all_imported" = true ]; then
+                  echo "✅ 所有镜像导入完成！"
+                  break
+              fi
+              
+              if [ $attempt -eq $max_attempts ]; then
+                  echo "❌ 镜像导入超时，以下镜像未能成功导入："
+                  for image in "${required_images[@]}"; do
+                      if ! ctr -n k8s.io images list | grep -q "$image"; then
+                          echo "  - $image"
+                      fi
+                  done
+                  exit 1
+              fi
+              
+              echo "等待2秒后重试..."
+              sleep 2
+              attempt=$((attempt + 1))
+          done
+          
+          echo "✅ 所有镜像导入完成，开始Kubernetes部署..."
           
           # 检查 kubectl 是否可用
           echo "🔍 检查 kubectl 是否可用..."

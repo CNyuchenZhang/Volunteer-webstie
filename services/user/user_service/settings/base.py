@@ -124,6 +124,10 @@ STATIC_URL = '/static/'
 # STATIC_URL = 'http://47.79.239.219:30081/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
+# 确保静态文件目录存在
+import os
+os.makedirs(STATIC_ROOT, exist_ok=True)
+
 # Media files
 MEDIA_URL = '/media/'
 # MEDIA_URL = 'http://47.79.239.219:30081/media/'
