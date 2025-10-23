@@ -1,0 +1,46 @@
+# User Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+  namespace: mywork
+spec:
+  selector:
+    app: user-service
+  ports:
+  - protocol: TCP
+    port: 8000
+    targetPort: 8000
+  type: ClusterIP
+
+---
+# Activity Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: activity-service
+  namespace: mywork
+spec:
+  selector:
+    app: activity-service
+  ports:
+  - protocol: TCP
+    port: 8000
+    targetPort: 8000
+  type: ClusterIP
+
+---
+# Notification Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-service
+  namespace: mywork
+spec:
+  selector:
+    app: notification-service
+  ports:
+    - protocol: TCP
+      port: 8000
+      targetPort: 8000
+  type: ClusterIP

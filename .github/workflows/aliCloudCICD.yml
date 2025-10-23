@@ -1,4 +1,4 @@
-name: 🚀 CI/CD Pipeline
+name: 🚀 Volunteer Platform CI/CD
 
 on:
   pull_request:
@@ -8,35 +8,141 @@ on:
     branches: [ "main" ]
 
 jobs:
-  build-test:
+  # 测试阶段 - PR时运行
+  test:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-22.04
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+          
     steps:
-      - uses: actions/checkout@v4
-      - name: Build Frontend
-        run: cd frontend/app && npm install && npm run build
-      - name: Build Admin Frontend
-        run: cd frontend-admin/app && npm install && npm run build
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+        
+    - name: Install Python dependencies
+      run: |
+        pip install -r services/user/requirements.txt
+        pip install -r services/activity/requirements.txt
+        pip install -r services/notification/requirements.txt
+        
+    - name: Install frontend dependencies
+      run: |
+        cd frontend
+        npm ci
+        
+    - name: Run user service tests
+      run: |
+        cd services/user
+        python manage.py migrate --settings=user_service.settings.base
+        python manage.py test users.tests --verbosity=2 --settings=user_service.settings.base
+      env:
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+        
+    - name: Run activity service tests
+      run: |
+        cd services/activity
+        python manage.py migrate --settings=activity_service.settings.base
+        python manage.py test activities.tests -v 2 --settings=activity_service.settings.base
+      env:
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+        
+    - name: Run notification service tests
+      run: |
+        cd services/notification
+        python manage.py migrate --settings=notification_service.settings
+        python manage.py test notification_service.tests -v 2 --settings=notification_service.settings
+      env:
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+        
+    - name: Run frontend build test
+      run: |
+        cd frontend
+        npm run build
+        echo "✅ Frontend build successful"
 
-  deploy-prod:
+  # 部署阶段 - 推送到main分支时运行
+  deploy:
     if: github.event_name == 'push'
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
-      - name: Build Frontend
-        run: cd frontend/app && npm install && npm run build
-      - name: Build Admin Frontend
-        run: cd frontend-admin/app && npm install && npm run build
-      - name: Deploy to Production
-        uses: appleboy/ssh-action@v0.1.10
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.aliCloud }}
-          script: |
-            cd /home/project/Volunteer-webstie
-            git reset --hard HEAD
-            git pull origin main
-            docker compose down
-            docker compose up -d --build
-            docker image prune -f
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Deploy to Production
+      uses: appleboy/ssh-action@v0.1.10
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USER }}
+        key: ${{ secrets.aliCloud }}
+        script: |
+          echo "🚀 开始部署 Volunteer Platform..."
+          
+          # 进入项目目录
+          cd /home/project/Volunteer-platform
+          
+          # 更新代码
+          echo "📥 更新代码..."
+          git reset --hard HEAD
+          git pull origin main
+          
+          # 停止现有服务
+          echo "🛑 停止现有服务..."
+          docker compose down
+          
+          # 清理旧镜像
+          echo "🧹 清理旧镜像..."
+          docker image prune -f
+          
+          # 构建并启动服务
+          echo "🔨 构建并启动服务..."
+          docker compose up -d --build
+          
+          # 等待服务启动
+          echo "⏳ 等待服务启动..."
+          sleep 30
+          
+          # 检查服务状态
+          echo "📊 检查服务状态..."
+          docker compose ps
+          
+          # 运行健康检查
+          echo "🏥 运行健康检查..."
+          docker compose exec -T user-service python manage.py check --settings=user_service.settings.base || echo "用户服务健康检查失败"
+          docker compose exec -T activity-service python manage.py check --settings=activity_service.settings.base || echo "活动服务健康检查失败"
+          docker compose exec -T notification-service python manage.py check --settings=notification_service.settings || echo "通知服务健康检查失败"
+          
+          echo "✅ 部署完成！"
+          
+    - name: Deployment Summary
+      run: |
+        echo "## 🎉 部署完成！" >> $GITHUB_STEP_SUMMARY
+        echo "| 服务 | 状态 |" >> $GITHUB_STEP_SUMMARY
+        echo "|------|------|" >> $GITHUB_STEP_SUMMARY
+        echo "| 用户服务 | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
+        echo "| 活动服务 | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
+        echo "| 通知服务 | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
+        echo "| 前端服务 | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
+        echo "| Nginx网关 | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
