@@ -76,7 +76,6 @@ deploy_gateway() {
 deploy_ingress() {
     echo "🚪 部署 Ingress..."
     kubectl apply -f ingress.yaml
-    kubectl apply -f ingress-nginx-controller.yaml
 }
 
 # 等待基础服务部署完成
