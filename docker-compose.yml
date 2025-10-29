@@ -5,18 +5,46 @@ networks:
     driver: bridge
 
 services:
-  backend-service:
-    image: jsrgzyc/backend-service:latest
+  user-service:
+    image: jsrgzyc/user-service:latest
     build:
-      context: ./backend
+      context: ./services/user
       dockerfile: Dockerfile
-    container_name: backend_service
+    container_name: user_service
     ports:
-      - "8000:8000"
+      - "8001:8000"
     restart: unless-stopped
     networks:
       - volunteer-net
 
+  activity-service:
+    image: jsrgzyc/activity-service:latest
+    build:
+      context: ./services/activity
+      dockerfile: Dockerfile
+    container_name: activity_service
+    ports:
+      - "8002:8000"
+    restart: unless-stopped
+    depends_on:
+      - user-service
+    networks:
+      - volunteer-net
+
+  notification-service:
+    image: jsrgzyc/notification-service:latest
+    build:
+      context: ./services/notification
+      dockerfile: Dockerfile
+    container_name: notification_service
+    ports:
+      - "8003:8000"
+    restart: unless-stopped
+    depends_on:
+      - user-service
+      - activity-service
+    networks:
+      - volunteer-net
 
   frontend-service:
     image: jsrgzyc/frontend:latest
@@ -28,6 +56,8 @@ services:
       - "80:80"
     restart: unless-stopped
     depends_on:
-      - backend-service
+      - user-service
+      - activity-service
+      - notification-service
     networks:
       - volunteer-net
