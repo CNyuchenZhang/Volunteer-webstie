@@ -6,11 +6,11 @@ networks:
 
 services:
   backend-service:
-    image: jsrgzyc/backend-service:latest
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: backend_service
+    image: xiejiani/backend:v1
+#    build:
+#      context: ./backend
+#      dockerfile: Dockerfile
+#    container_name: backend_service
     ports:
       - "8000:8000"
     restart: unless-stopped
