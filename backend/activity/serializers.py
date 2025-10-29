@@ -8,6 +8,7 @@ from .models import (
 )
 
 
+
 class ActivityCategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = ActivityCategory
@@ -35,15 +36,21 @@ class ActivitySerializer(serializers.ModelSerializer):
         """返回完整的图片URL"""
         if not obj.images:
             return []
+        from django.conf import settings
 
+        media_url = settings.MEDIA_URL
         request = self.context.get('request')
         if request:
             # 使用request构建完整URL
-            return [request.build_absolute_uri(image_path) for image_path in obj.images]
+            base_url = request.build_absolute_uri('/').rstrip('/')
+            if 'localhost:' not in base_url:
+                base_url += ':8000'
+            # 拼接完整 URL
+            return [f"{base_url}{media_url}{image_path.lstrip('/')}" for image_path in obj.images]
         else:
             # 如果没有request，使用默认的媒体URL
             from django.conf import settings
-            base_url = getattr(settings, 'MEDIA_DOMAIN', 'http://activity-service:8000')
+            base_url = getattr(settings, 'MEDIA_DOMAIN', 'http://localhost:8000')
             return [f"{base_url}{image_path}" for image_path in obj.images]
 
 
