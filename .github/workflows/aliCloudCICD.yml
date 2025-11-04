@@ -347,8 +347,7 @@ jobs:
           npm run test:unit:coverage || npm run test:unit || true
         continue-on-error: true
         env:
-          NODE_OPTIONS: "--max-old-space-size=6144 --optimize-for-size"
-          # 强制垃圾回收，减少内存占用
+          NODE_OPTIONS: "--max-old-space-size=6144"
           NODE_ENV: "test"
 
       - name: Run user service tests (with coverage)
