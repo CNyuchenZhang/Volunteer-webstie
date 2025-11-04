@@ -8,6 +8,14 @@ import HomePage from '../../pages/HomePage';
 vi.mock('../../services/api', () => ({
   activityAPI: {
     getActivities: vi.fn().mockResolvedValue({ results: [], count: 0 }),
+    getActivityCategories: vi.fn().mockResolvedValue({ results: [] }),
+    getStats: vi.fn().mockResolvedValue({ total_activities: 0, total_participants: 0 }),
+  },
+  userAPI: {
+    getStats: vi.fn().mockResolvedValue({ total_users: 0, total_hours: 0 }),
+  },
+  notificationAPI: {
+    getNotifications: vi.fn().mockResolvedValue({ results: [] }),
   },
 }));
 

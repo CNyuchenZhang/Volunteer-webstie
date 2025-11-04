@@ -2161,8 +2161,16 @@ class ActivityCreateSerializerTestCase(APITestCase):
         from django.core.files.uploadedfile import SimpleUploadedFile
         from .serializers import ActivityCreateSerializer
         from unittest.mock import Mock
+        from io import BytesIO
+        from PIL import Image
         
-        image = SimpleUploadedFile("test.jpg", b"file_content", content_type="image/jpeg")
+        # 使用 Pillow 创建一个有效的 1x1 像素 JPEG 图片
+        img = Image.new('RGB', (1, 1), color='red')
+        img_bytes = BytesIO()
+        img.save(img_bytes, format='JPEG')
+        img_bytes.seek(0)
+        
+        image = SimpleUploadedFile("test.jpg", img_bytes.read(), content_type="image/jpeg")
         
         request = Mock()
         request.user = self.organizer_user
