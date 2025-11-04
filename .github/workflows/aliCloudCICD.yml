@@ -47,12 +47,251 @@ jobs:
           pip-audit -r services/activity/requirements.txt -f sarif -o pip-audit-activity.sarif || true
           pip-audit -r services/notification/requirements.txt -f sarif -o pip-audit-notification.sarif || true
 
+      - name: Generate SAST HTML reports
+        continue-on-error: true
+        run: |
+          python3 << 'PYTHON_SCRIPT'
+          import json
+          import glob
+          import os
+          
+          # 工具映射
+          tool_names = {
+              'gitleaks.sarif': 'Gitleaks - 密钥泄露检测',
+              'bandit.sarif': 'Bandit - Python 安全扫描',
+              'semgrep.sarif': 'Semgrep - 通用代码安全扫描',
+              'pip-audit-user.sarif': 'pip-audit - User Service 依赖漏洞',
+              'pip-audit-activity.sarif': 'pip-audit - Activity Service 依赖漏洞',
+              'pip-audit-notification.sarif': 'pip-audit - Notification Service 依赖漏洞'
+          }
+          
+          all_results = {}
+          
+          for sarif_file in glob.glob('*.sarif'):
+              try:
+                  with open(sarif_file, 'r', encoding='utf-8') as f:
+                      data = json.load(f)
+                  
+                  tool_name = tool_names.get(sarif_file, sarif_file.replace('.sarif', '').replace('-', ' ').title())
+                  
+                  # 解析 SARIF 结果
+                  runs = data.get('runs', [])
+                  findings = []
+                  total_findings = 0
+                  
+                  for run in runs:
+                      results = run.get('results', [])
+                      total_findings += len(results)
+                      
+                      for result in results:
+                          rule_id = result.get('ruleId', 'N/A')
+                          message = result.get('message', {}).get('text', 'N/A')
+                          level = result.get('level', 'warning')
+                          severity = result.get('properties', {}).get('severity', level)
+                          
+                          # 获取位置信息
+                          locations = result.get('locations', [])
+                          location_info = 'N/A'
+                          if locations:
+                              loc = locations[0].get('physicalLocation', {})
+                              file_path = loc.get('artifactLocation', {}).get('uri', 'N/A')
+                              region = loc.get('region', {})
+                              start_line = region.get('startLine', 'N/A')
+                              location_info = f"{file_path}:{start_line}"
+                          
+                          findings.append({
+                              'rule_id': rule_id,
+                              'message': message,
+                              'severity': severity,
+                              'location': location_info
+                          })
+                  
+                  all_results[sarif_file] = {
+                      'tool': tool_name,
+                      'total': total_findings,
+                      'findings': findings
+                  }
+                  
+                  # 生成单个工具的 HTML 报告
+                  html_file = sarif_file.replace('.sarif', '.html')
+                  severity_colors = {
+                      'error': '#dc3545',
+                      'warning': '#fd7e14',
+                      'note': '#ffc107',
+                      'none': '#6c757d'
+                  }
+                  
+                  html = f"""<!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>{tool_name} - SAST Report</title>
+              <style>
+                  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+                  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #f5f7fa; padding: 20px; line-height: 1.6; }}
+                  .container {{ max-width: 1400px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; }}
+                  header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; }}
+                  h1 {{ font-size: 28px; margin-bottom: 10px; }}
+                  .summary {{ padding: 20px; background: #f8f9fa; border-bottom: 1px solid #e0e0e0; }}
+                  .stat {{ display: inline-block; margin-right: 30px; }}
+                  .stat-number {{ font-size: 32px; font-weight: bold; color: #667eea; }}
+                  .stat-label {{ color: #6c757d; font-size: 14px; margin-top: 5px; }}
+                  .findings-table {{ width: 100%; border-collapse: collapse; }}
+                  .findings-table th {{ background: #495057; color: white; padding: 12px; text-align: left; font-weight: 600; }}
+                  .findings-table td {{ padding: 12px; border-bottom: 1px solid #e9ecef; }}
+                  .findings-table tr:hover {{ background: #f8f9fa; }}
+                  .severity-badge {{ display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; }}
+                  .severity-error {{ background: #dc3545; color: white; }}
+                  .severity-warning {{ background: #fd7e14; color: white; }}
+                  .severity-note {{ background: #ffc107; color: #212529; }}
+                  .severity-none {{ background: #6c757d; color: white; }}
+                  .location {{ font-family: 'Courier New', monospace; font-size: 13px; color: #667eea; }}
+                  .no-findings {{ text-align: center; padding: 40px; color: #28a745; font-size: 18px; }}
+                  .content {{ padding: 20px; }}
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <header>
+                      <h1>🔒 {tool_name}</h1>
+                      <div style="opacity: 0.9;">Security Scan Report</div>
+                  </header>
+                  
+                  <div class="summary">
+                      <div class="stat">
+                          <div class="stat-number">{total_findings}</div>
+                          <div class="stat-label">Total Findings</div>
+                      </div>
+                  </div>
+                  
+                  <div class="content">
+          """
+                  
+                  if findings:
+                      html += """
+                      <table class="findings-table">
+                          <thead>
+                              <tr>
+                                  <th>Rule ID</th>
+                                  <th>Severity</th>
+                                  <th>Location</th>
+                                  <th>Message</th>
+                              </tr>
+                          </thead>
+                          <tbody>
+                      """
+                      
+                      for finding in findings:
+                          severity_class = f'severity-{finding["severity"].lower()}'
+                          html += f"""
+                              <tr>
+                                  <td class="location">{finding['rule_id']}</td>
+                                  <td><span class="severity-badge {severity_class}">{finding['severity'].upper()}</span></td>
+                                  <td class="location">{finding['location']}</td>
+                                  <td>{finding['message'][:200]}{'...' if len(finding['message']) > 200 else ''}</td>
+                              </tr>
+                          """
+                      
+                      html += """
+                          </tbody>
+                      </table>
+                      """
+                  else:
+                      html += '<div class="no-findings">✅ No security issues found!</div>'
+                  
+                  html += """
+                  </div>
+              </div>
+          </body>
+          </html>
+          """
+                  
+                  with open(html_file, 'w', encoding='utf-8') as f:
+                      f.write(html)
+                  print(f"✅ Generated {html_file}")
+              except Exception as e:
+                  print(f"⚠️  Error processing {sarif_file}: {e}")
+          
+          # 生成汇总报告
+          total_all = sum(r['total'] for r in all_results.values())
+          html_summary = f"""<!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>SAST Security Scan Summary</title>
+              <style>
+                  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+                  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #f5f7fa; padding: 20px; }}
+                  .container {{ max-width: 1200px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; }}
+                  header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; }}
+                  h1 {{ font-size: 28px; margin-bottom: 10px; }}
+                  .summary {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; padding: 30px; }}
+                  .card {{ background: #f8f9fa; border-radius: 8px; padding: 20px; border-left: 4px solid #667eea; }}
+                  .card h3 {{ color: #333; margin-bottom: 15px; font-size: 18px; }}
+                  .stat-number {{ font-size: 48px; font-weight: bold; color: #667eea; margin: 10px 0; }}
+                  .stat-label {{ color: #6c757d; font-size: 14px; }}
+                  .links {{ padding: 20px; background: #f8f9fa; border-top: 1px solid #e0e0e0; }}
+                  .links a {{ display: inline-block; margin: 5px 10px 5px 0; padding: 8px 16px; background: #667eea; color: white; text-decoration: none; border-radius: 4px; }}
+                  .links a:hover {{ background: #5568d3; }}
+                  .tool-card {{ border-left-color: #dc3545; }} 
+                  .tool-card.no-issues {{ border-left-color: #28a745; }}
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <header>
+                      <h1>🔒 SAST Security Scan Summary</h1>
+                      <p>Total Findings: {total_all}</p>
+                  </header>
+                  
+                  <div class="summary">
+          """
+          
+          for sarif_file, result in all_results.items():
+              card_class = 'tool-card' if result['total'] > 0 else 'tool-card no-issues'
+              html_summary += f"""
+                      <div class="card {card_class}">
+                          <h3>{result['tool']}</h3>
+                          <div class="stat-number">{result['total']}</div>
+                          <div class="stat-label">Findings</div>
+                      </div>
+              """
+          
+          html_summary += """
+                  </div>
+                  
+                  <div class="links">
+                      <h3>📁 Detailed Reports:</h3>
+          """
+          
+          for sarif_file in sorted(all_results.keys()):
+              html_file = sarif_file.replace('.sarif', '.html')
+              tool_name = all_results[sarif_file]['tool']
+              html_summary += f'                      <a href="{html_file}" target="_blank">{tool_name}</a>\n'
+          
+          html_summary += """
+                  </div>
+              </div>
+          </body>
+          </html>
+          """
+          
+          with open('sast-summary.html', 'w', encoding='utf-8') as f:
+              f.write(html_summary)
+          print("✅ Generated sast-summary.html")
+          PYTHON_SCRIPT
+
       - name: Upload SAST artifacts
         uses: actions/upload-artifact@v4
         with:
           name: sast_reports
           path: |
             *.sarif
+            *.html
+          if-no-files-found: ignore
+          retention-days: 7
 
   # 单元测试与覆盖率（PR）
   unit:
@@ -130,7 +369,7 @@ jobs:
           coverage html -d ../../coverage-notification-html
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
-
+        
       - name: Check coverage threshold
         continue-on-error: true
         run: |
@@ -671,6 +910,158 @@ jobs:
           allow_issue_writing: false
           upload_artifact: false
 
+      - name: Generate ZAP JSON summary
+        continue-on-error: true
+        run: |
+          python3 << 'PYTHON_SCRIPT'
+          import json
+          import os
+          
+          if os.path.exists('report_json.json'):
+              try:
+                  with open('report_json.json', 'r', encoding='utf-8') as f:
+                      data = json.load(f)
+                  
+                  # 解析 ZAP JSON 报告
+                  site = data.get('site', [])
+                  total_alerts = 0
+                  alerts_by_severity = {'High': 0, 'Medium': 0, 'Low': 0, 'Informational': 0}
+                  alerts_list = []
+                  
+                  for site_item in site:
+                      alerts = site_item.get('alerts', [])
+                      total_alerts += len(alerts)
+                      
+                      for alert in alerts:
+                          severity = alert.get('riskcode', 'Informational')
+                          severity_map = {'3': 'High', '2': 'Medium', '1': 'Low', '0': 'Informational'}
+                          severity_name = severity_map.get(str(severity), 'Informational')
+                          alerts_by_severity[severity_name] = alerts_by_severity.get(severity_name, 0) + 1
+                          
+                          alerts_list.append({
+                              'name': alert.get('name', 'N/A'),
+                              'risk': severity_name,
+                              'confidence': alert.get('confidence', 'N/A'),
+                              'url': alert.get('url', 'N/A'),
+                              'description': alert.get('desc', 'N/A')[:200]
+                          })
+                  
+                  # 生成汇总 HTML
+                  html = f"""<!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>ZAP Security Scan Summary</title>
+              <style>
+                  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+                  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #f5f7fa; padding: 20px; }}
+                  .container {{ max-width: 1400px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; }}
+                  header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; }}
+                  h1 {{ font-size: 28px; margin-bottom: 10px; }}
+                  .summary {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; padding: 20px; background: #f8f9fa; }}
+                  .stat-card {{ background: white; padding: 20px; border-radius: 6px; border-left: 4px solid #667eea; }}
+                  .stat-card.high {{ border-left-color: #dc3545; }}
+                  .stat-card.medium {{ border-left-color: #fd7e14; }}
+                  .stat-card.low {{ border-left-color: #ffc107; }}
+                  .stat-card.info {{ border-left-color: #6c757d; }}
+                  .stat-number {{ font-size: 32px; font-weight: bold; margin-bottom: 5px; }}
+                  .stat-label {{ color: #6c757d; font-size: 14px; }}
+                  .alerts-table {{ width: 100%; border-collapse: collapse; }}
+                  .alerts-table th {{ background: #495057; color: white; padding: 12px; text-align: left; font-weight: 600; }}
+                  .alerts-table td {{ padding: 12px; border-bottom: 1px solid #e9ecef; }}
+                  .alerts-table tr:hover {{ background: #f8f9fa; }}
+                  .risk-badge {{ display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; }}
+                  .risk-high {{ background: #dc3545; color: white; }}
+                  .risk-medium {{ background: #fd7e14; color: white; }}
+                  .risk-low {{ background: #ffc107; color: #212529; }}
+                  .risk-info {{ background: #6c757d; color: white; }}
+                  .url {{ font-family: 'Courier New', monospace; font-size: 12px; color: #667eea; word-break: break-all; }}
+                  .content {{ padding: 20px; }}
+                  .no-alerts {{ text-align: center; padding: 40px; color: #28a745; font-size: 18px; }}
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <header>
+                      <h1>🔒 OWASP ZAP Security Scan Summary</h1>
+                      <p>Total Alerts: {total_alerts}</p>
+                  </header>
+                  
+                  <div class="summary">
+                      <div class="stat-card">
+                          <div class="stat-number">{total_alerts}</div>
+                          <div class="stat-label">Total Alerts</div>
+                      </div>
+                      <div class="stat-card high">
+                          <div class="stat-number">{alerts_by_severity.get('High', 0)}</div>
+                          <div class="stat-label">High Risk</div>
+                      </div>
+                      <div class="stat-card medium">
+                          <div class="stat-number">{alerts_by_severity.get('Medium', 0)}</div>
+                          <div class="stat-label">Medium Risk</div>
+                      </div>
+                      <div class="stat-card low">
+                          <div class="stat-number">{alerts_by_severity.get('Low', 0)}</div>
+                          <div class="stat-label">Low Risk</div>
+                      </div>
+                      <div class="stat-card info">
+                          <div class="stat-number">{alerts_by_severity.get('Informational', 0)}</div>
+                          <div class="stat-label">Informational</div>
+                      </div>
+                  </div>
+                  
+                  <div class="content">
+          """
+                  
+                  if alerts_list:
+                      html += """
+                      <table class="alerts-table">
+                          <thead>
+                              <tr>
+                                  <th>Alert Name</th>
+                                  <th>Risk Level</th>
+                                  <th>Confidence</th>
+                                  <th>URL</th>
+                                  <th>Description</th>
+                              </tr>
+                          </thead>
+                          <tbody>
+                      """
+                      
+                      for alert in alerts_list:
+                          risk_class = f'risk-{alert["risk"].lower()}'
+                          html += f"""
+                              <tr>
+                                  <td><strong>{alert['name']}</strong></td>
+                                  <td><span class="risk-badge {risk_class}">{alert['risk']}</span></td>
+                                  <td>{alert['confidence']}</td>
+                                  <td class="url">{alert['url'][:100]}{'...' if len(alert['url']) > 100 else ''}</td>
+                                  <td>{alert['description']}</td>
+                              </tr>
+                          """
+                      
+                      html += """
+                          </tbody>
+                      </table>
+                      """
+                  else:
+                      html += '<div class="no-alerts">✅ No security alerts found!</div>'
+                  
+                  html += """
+                  </div>
+              </div>
+          </body>
+          </html>
+          """
+                  
+                  with open('zap-summary.html', 'w', encoding='utf-8') as f:
+                      f.write(html)
+                  print("✅ Generated zap-summary.html")
+              except Exception as e:
+                  print(f"⚠️  Error processing ZAP JSON: {e}")
+          PYTHON_SCRIPT
+
       - name: Upload ZAP report
         if: always()
         uses: actions/upload-artifact@v4
@@ -680,6 +1071,7 @@ jobs:
             report_html.html
             report_json.json
             report_md.md
+            zap-summary.html
           if-no-files-found: ignore
           retention-days: 7
 
@@ -728,6 +1120,179 @@ jobs:
         run: |
           jmeter -n -t tests/perf/jmeter_test.jmx -l jmeter.jtl -e -o jmeter-report || true
 
+      - name: Generate JMeter JTL summary
+        continue-on-error: true
+        run: |
+          python3 << 'PYTHON_SCRIPT'
+          import csv
+          import os
+          import statistics
+          
+          if os.path.exists('jmeter.jtl'):
+              try:
+                  # 解析 JMeter JTL (CSV 格式)
+                  results = []
+                  with open('jmeter.jtl', 'r', encoding='utf-8') as f:
+                      reader = csv.DictReader(f)
+                      for row in reader:
+                          if 'timeStamp' in row and 'elapsed' in row:
+                              try:
+                                  elapsed = int(row.get('elapsed', 0))
+                                  success = row.get('success', 'true').lower() == 'true'
+                                  label = row.get('label', 'N/A')
+                                  results.append({
+                                      'label': label,
+                                      'elapsed': elapsed,
+                                      'success': success
+                                  })
+                              except ValueError:
+                                  continue
+                  
+                  if results:
+                      total_requests = len(results)
+                      success_count = sum(1 for r in results if r['success'])
+                      failure_count = total_requests - success_count
+                      response_times = [r['elapsed'] for r in results]
+                      avg_response = statistics.mean(response_times) if response_times else 0
+                      min_response = min(response_times) if response_times else 0
+                      max_response = max(response_times) if response_times else 0
+                      median_response = statistics.median(response_times) if response_times else 0
+                      
+                      # 按标签分组统计
+                      label_stats = {}
+                      for r in results:
+                          label = r['label']
+                          if label not in label_stats:
+                              label_stats[label] = {'total': 0, 'success': 0, 'times': []}
+                          label_stats[label]['total'] += 1
+                          if r['success']:
+                              label_stats[label]['success'] += 1
+                          label_stats[label]['times'].append(r['elapsed'])
+                      
+                      # 生成 HTML 汇总
+                      html = f"""<!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>JMeter Performance Test Summary</title>
+              <style>
+                  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+                  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #f5f7fa; padding: 20px; }}
+                  .container {{ max-width: 1400px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; }}
+                  header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; }}
+                  h1 {{ font-size: 28px; margin-bottom: 10px; }}
+                  .summary {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; padding: 20px; background: #f8f9fa; }}
+                  .stat-card {{ background: white; padding: 20px; border-radius: 6px; border-left: 4px solid #667eea; }}
+                  .stat-card.success {{ border-left-color: #28a745; }}
+                  .stat-card.failure {{ border-left-color: #dc3545; }}
+                  .stat-number {{ font-size: 32px; font-weight: bold; margin-bottom: 5px; }}
+                  .stat-label {{ color: #6c757d; font-size: 14px; }}
+                  .stats-table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
+                  .stats-table th {{ background: #495057; color: white; padding: 12px; text-align: left; font-weight: 600; }}
+                  .stats-table td {{ padding: 12px; border-bottom: 1px solid #e9ecef; }}
+                  .stats-table tr:hover {{ background: #f8f9fa; }}
+                  .content {{ padding: 20px; }}
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <header>
+                      <h1>⚡ JMeter Performance Test Summary</h1>
+                      <p>Total Requests: {total_requests}</p>
+                  </header>
+                  
+                  <div class="summary">
+                      <div class="stat-card">
+                          <div class="stat-number">{total_requests:,}</div>
+                          <div class="stat-label">Total Requests</div>
+                      </div>
+                      <div class="stat-card success">
+                          <div class="stat-number">{success_count:,}</div>
+                          <div class="stat-label">Successful</div>
+                      </div>
+                      <div class="stat-card failure">
+                          <div class="stat-number">{failure_count:,}</div>
+                          <div class="stat-label">Failed</div>
+                      </div>
+                      <div class="stat-card">
+                          <div class="stat-number">{avg_response:.0f}ms</div>
+                          <div class="stat-label">Avg Response Time</div>
+                      </div>
+                      <div class="stat-card">
+                          <div class="stat-number">{median_response:.0f}ms</div>
+                          <div class="stat-label">Median Response Time</div>
+                      </div>
+                      <div class="stat-card">
+                          <div class="stat-number">{min_response}ms</div>
+                          <div class="stat-label">Min Response Time</div>
+                      </div>
+                      <div class="stat-card">
+                          <div class="stat-number">{max_response}ms</div>
+                          <div class="stat-label">Max Response Time</div>
+                      </div>
+                      <div class="stat-card">
+                          <div class="stat-number">{(success_count/total_requests*100) if total_requests > 0 else 0:.1f}%</div>
+                          <div class="stat-label">Success Rate</div>
+                      </div>
+                  </div>
+                  
+                  <div class="content">
+                      <h2>Performance by Endpoint</h2>
+                      <table class="stats-table">
+                          <thead>
+                              <tr>
+                                  <th>Endpoint</th>
+                                  <th>Total Requests</th>
+                                  <th>Successful</th>
+                                  <th>Failed</th>
+                                  <th>Avg Response (ms)</th>
+                                  <th>Min (ms)</th>
+                                  <th>Max (ms)</th>
+                                  <th>Success Rate</th>
+                              </tr>
+                          </thead>
+                          <tbody>
+          """
+                      
+                      for label, stats in sorted(label_stats.items()):
+                          avg = statistics.mean(stats['times']) if stats['times'] else 0
+                          min_time = min(stats['times']) if stats['times'] else 0
+                          max_time = max(stats['times']) if stats['times'] else 0
+                          success_rate = (stats['success'] / stats['total'] * 100) if stats['total'] > 0 else 0
+                          
+                          html += f"""
+                              <tr>
+                                  <td><strong>{label}</strong></td>
+                                  <td>{stats['total']:,}</td>
+                                  <td>{stats['success']:,}</td>
+                                  <td>{stats['total'] - stats['success']:,}</td>
+                                  <td>{avg:.0f}</td>
+                                  <td>{min_time}</td>
+                                  <td>{max_time}</td>
+                                  <td>{success_rate:.1f}%</td>
+                              </tr>
+                          """
+                      
+                      html += """
+                          </tbody>
+                      </table>
+                      <p style="margin-top: 20px; color: #6c757d;">
+                          <strong>Note:</strong> For detailed analysis, see the full JMeter HTML report in <code>jmeter-report/</code>
+                      </p>
+                  </div>
+              </div>
+          </body>
+          </html>
+          """
+                      
+                      with open('jmeter-summary.html', 'w', encoding='utf-8') as f:
+                          f.write(html)
+                      print("✅ Generated jmeter-summary.html")
+              except Exception as e:
+                  print(f"⚠️  Error processing JMeter JTL: {e}")
+          PYTHON_SCRIPT
+
       - name: Upload perf artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -736,6 +1301,7 @@ jobs:
           path: |
             jmeter.jtl
             jmeter-report
+            jmeter-summary.html
           if-no-files-found: ignore
           retention-days: 7
 
@@ -744,227 +1310,227 @@ jobs:
     if: github.event_name == 'push'
     runs-on: ubuntu-22.04
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
       
-      - name: Deploy to Production
-        uses: appleboy/ssh-action@v0.1.10
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.aliCloud }}
-          script: |
-            echo "🚀 开始部署 Volunteer Platform..."
-            
-            # 进入项目目录
-            cd /home/project/Volunteer-platform
-            
-            # 更新代码
-            echo "📥 更新代码..."
-            git pull
+    - name: Deploy to Production
+      uses: appleboy/ssh-action@v0.1.10
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USER }}
+        key: ${{ secrets.aliCloud }}
+        script: |
+          echo "🚀 开始部署 Volunteer Platform..."
           
-            # 构建镜像
-            echo "🔨 构建镜像..."
-            docker compose build
-            
-            # 检查现有镜像
-            echo "1. 检查现有镜像..."
-            docker images | grep jsrgzyc
-            
-            # 导入镜像到containerd
-            echo "2. 导入镜像到containerd..."
+          # 进入项目目录
+          cd /home/project/Volunteer-platform
           
-            echo "导入user-service..."
-            if docker images | grep -q "jsrgzyc/user-service"; then
-                docker save jsrgzyc/user-service:latest | ctr -n k8s.io images import -
-                echo "✅ user-service导入成功"
-            else
-                echo "❌ user-service镜像不存在"
-            fi
+          # 更新代码
+          echo "📥 更新代码..."
+          git pull
           
-            echo "导入activity-service..."
-            if docker images | grep -q "jsrgzyc/activity-service"; then
-                docker save jsrgzyc/activity-service:latest | ctr -n k8s.io images import -
-                echo "✅ activity-service导入成功"
-            else
-                echo "❌ activity-service镜像不存在"
-            fi
+          # 构建镜像
+          echo "🔨 构建镜像..."
+          docker compose build
           
-            echo "导入notification-service..."
-            if docker images | grep -q "jsrgzyc/notification-service"; then
-                docker save jsrgzyc/notification-service:latest | ctr -n k8s.io images import -
-                echo "✅ notification-service导入成功"
-            else
-                echo "❌ notification-service镜像不存在"
-            fi
+          # 检查现有镜像
+          echo "1. 检查现有镜像..."
+          docker images | grep jsrgzyc
           
-            echo "导入frontend..."
-            if docker images | grep -q "jsrgzyc/frontend"; then
-                docker save jsrgzyc/frontend:latest | ctr -n k8s.io images import -
-                echo "✅ frontend导入成功"
-            else
-                echo "❌ frontend镜像不存在"
-            fi
+          # 导入镜像到containerd
+          echo "2. 导入镜像到containerd..."
           
-            # 验证镜像导入完成
-            echo "🔍 验证镜像导入状态..."
-            required_images=(
-                "jsrgzyc/user-service:latest"
-                "jsrgzyc/activity-service:latest"
-                "jsrgzyc/notification-service:latest"
-                "jsrgzyc/frontend:latest"
-            )
-            
-            # 等待并验证镜像导入完成
-            max_attempts=10
-            attempt=1
-            
-            while [ $attempt -le $max_attempts ]; do
-                echo "检查镜像导入状态 (尝试 $attempt/$max_attempts)..."
-                all_imported=true
-                
-                for image in "${required_images[@]}"; do
-                    if ctr -n k8s.io images list | grep -q "$image"; then
-                        echo "✅ $image 已导入"
-                    else
-                        echo "⏳ $image 尚未导入，等待中..."
-                        all_imported=false
-                    fi
-                done
-                
-                if [ "$all_imported" = true ]; then
-                    echo "✅ 所有镜像导入完成！"
-                    break
-                fi
-                
-                if [ $attempt -eq $max_attempts ]; then
-                    echo "❌ 镜像导入超时，以下镜像未能成功导入："
-                    for image in "${required_images[@]}"; do
-                        if ! ctr -n k8s.io images list | grep -q "$image"; then
-                            echo "  - $image"
-                        fi
-                    done
-                    exit 1
-                fi
-                
-                echo "等待2秒后重试..."
-                sleep 2
-                attempt=$((attempt + 1))
-            done
-            
-            echo "✅ 所有镜像导入完成，开始Kubernetes部署..."
-            
-            # 检查 kubectl 是否可用
-            echo "🔍 检查 kubectl 是否可用..."
-            if ! command -v kubectl &> /dev/null; then
-                echo "❌ kubectl 未安装或不在 PATH 中"
-                exit 1
-            else
-                echo "✅ kubectl 可用"
-            fi
-            
-            # 检查集群连接
-            echo "🔗 检查 Kubernetes 集群连接..."
-            if kubectl cluster-info >/dev/null 2>&1; then
-                echo "✅ Kubernetes 集群连接正常"
-            else
-                echo "❌ 无法连接到 Kubernetes 集群，请检查 kubeconfig、网络与集群状态"
-                exit 1
-            fi
+          echo "导入user-service..."
+          if docker images | grep -q "jsrgzyc/user-service"; then
+              docker save jsrgzyc/user-service:latest | ctr -n k8s.io images import -
+              echo "✅ user-service导入成功"
+          else
+              echo "❌ user-service镜像不存在"
+          fi
           
-            # 创建命名空间
-            echo "📦 创建命名空间..."
-            kubectl apply -f k8s/namespace.yaml
-            
-            # 创建配置
-            echo "⚙️ 创建配置..."
-            kubectl apply -f k8s/configmap.yaml
-            
-            # 部署数据库服务
-            echo "🗄️ 部署数据库服务..."
-            kubectl apply -f k8s/postgres-deployment.yaml
-            
-            # 部署微服务
-            echo "🔧 部署微服务..."
-            kubectl apply -f k8s/microservices-deployments.yaml
-            kubectl apply -f k8s/microservices-services.yaml
-            
-            # 部署前端
-            echo "🔧 部署前端..."
-            kubectl apply -f k8s/frontend-deployment.yaml
-            
-            # 等待基础服务部署完成
-            echo "⏳ 等待基础服务部署完成..."
-            base_deployments=(
-                "postgres"
-                "user-service"
-                "activity-service"
-                "notification-service"
-                "frontend-service"
-            )
-            
-            for deployment in "${base_deployments[@]}"; do
-                echo "等待 $deployment 就绪..."
-                kubectl wait --for=condition=available --timeout=300s deployment/$deployment -n mywork
-            done
-            
-            # 部署 nginx 网关
-            echo "🌐 部署 nginx 网关..."
-            kubectl apply -f k8s/nginx-deployment.yaml
-            
-            # 等待nginx网关部署完成
-            echo "⏳ 等待 nginx 网关部署完成..."
-            kubectl wait --for=condition=available --timeout=300s deployment/nginx-gateway -n mywork
-            
-            # 部署 Ingress
-            echo "🚪 部署 Ingress..."
-            kubectl apply -f k8s/ingress-nginx-controller.yaml
-            kubectl apply -f k8s/ingress.yaml
-            
-            # 检查服务状态
-            echo "📊 检查服务状态..."
-            
-            echo "=== Pods ==="
-            kubectl get pods -n mywork
-            
-            echo "=== Services ==="
-            kubectl get services -n mywork
-            
-            echo "=== Ingress ==="
-            kubectl get ingress -n mywork
-            
-            echo "=== ConfigMaps ==="
-            kubectl get configmaps -n mywork
-            
-            echo "=== Deployments ==="
-            kubectl get deployments -n mywork
-            
-            # 获取访问信息
-            echo "🔗 获取访问信息..."
-            
-            # 获取 Ingress 信息
-            echo "=== Ingress 访问地址 ==="
-            kubectl get ingress -n mywork -o wide
-            
-            # 获取 NodePort 信息
-            echo "=== NodePort 访问地址 ==="
-            kubectl get service nginx-gateway-nodeport -n mywork -o wide
-            
-            # 获取集群 IP
-            CLUSTER_IP=$(kubectl get service nginx-gateway-service -n mywork -o jsonpath='{.spec.clusterIP}')
-            echo "=== 集群内访问地址 ==="
-            echo "http://$CLUSTER_IP"
-            
-            echo "✅ 部署完成！"
+          echo "导入activity-service..."
+          if docker images | grep -q "jsrgzyc/activity-service"; then
+              docker save jsrgzyc/activity-service:latest | ctr -n k8s.io images import -
+              echo "✅ activity-service导入成功"
+          else
+              echo "❌ activity-service镜像不存在"
+          fi
           
-      - name: Deployment Summary
-        run: |
-          echo "## 🎉 部署完成！" >> $GITHUB_STEP_SUMMARY
-          echo "| 服务 | 状态 |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|------|" >> $GITHUB_STEP_SUMMARY
-          echo "| 用户服务 | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
-          echo "| 活动服务 | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
-          echo "| 通知服务 | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
-          echo "| 前端服务 | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
-          echo "| Nginx网关 | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
-          echo "| Ingress | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
+          echo "导入notification-service..."
+          if docker images | grep -q "jsrgzyc/notification-service"; then
+              docker save jsrgzyc/notification-service:latest | ctr -n k8s.io images import -
+              echo "✅ notification-service导入成功"
+          else
+              echo "❌ notification-service镜像不存在"
+          fi
+          
+          echo "导入frontend..."
+          if docker images | grep -q "jsrgzyc/frontend"; then
+              docker save jsrgzyc/frontend:latest | ctr -n k8s.io images import -
+              echo "✅ frontend导入成功"
+          else
+              echo "❌ frontend镜像不存在"
+          fi
+          
+          # 验证镜像导入完成
+          echo "🔍 验证镜像导入状态..."
+          required_images=(
+              "jsrgzyc/user-service:latest"
+              "jsrgzyc/activity-service:latest"
+              "jsrgzyc/notification-service:latest"
+              "jsrgzyc/frontend:latest"
+          )
+          
+          # 等待并验证镜像导入完成
+          max_attempts=10
+          attempt=1
+          
+          while [ $attempt -le $max_attempts ]; do
+              echo "检查镜像导入状态 (尝试 $attempt/$max_attempts)..."
+              all_imported=true
+              
+              for image in "${required_images[@]}"; do
+                  if ctr -n k8s.io images list | grep -q "$image"; then
+                      echo "✅ $image 已导入"
+                  else
+                      echo "⏳ $image 尚未导入，等待中..."
+                      all_imported=false
+                  fi
+              done
+              
+              if [ "$all_imported" = true ]; then
+                  echo "✅ 所有镜像导入完成！"
+                  break
+              fi
+              
+              if [ $attempt -eq $max_attempts ]; then
+                  echo "❌ 镜像导入超时，以下镜像未能成功导入："
+                  for image in "${required_images[@]}"; do
+                      if ! ctr -n k8s.io images list | grep -q "$image"; then
+                          echo "  - $image"
+                      fi
+                  done
+                  exit 1
+              fi
+              
+              echo "等待2秒后重试..."
+              sleep 2
+              attempt=$((attempt + 1))
+          done
+          
+          echo "✅ 所有镜像导入完成，开始Kubernetes部署..."
+          
+          # 检查 kubectl 是否可用
+          echo "🔍 检查 kubectl 是否可用..."
+          if ! command -v kubectl &> /dev/null; then
+              echo "❌ kubectl 未安装或不在 PATH 中"
+              exit 1
+          else
+              echo "✅ kubectl 可用"
+          fi
+          
+          # 检查集群连接
+          echo "🔗 检查 Kubernetes 集群连接..."
+          if kubectl cluster-info >/dev/null 2>&1; then
+              echo "✅ Kubernetes 集群连接正常"
+          else
+              echo "❌ 无法连接到 Kubernetes 集群，请检查 kubeconfig、网络与集群状态"
+              exit 1
+          fi
+          
+          # 创建命名空间
+          echo "📦 创建命名空间..."
+          kubectl apply -f k8s/namespace.yaml
+          
+          # 创建配置
+          echo "⚙️ 创建配置..."
+          kubectl apply -f k8s/configmap.yaml
+          
+          # 部署数据库服务
+          echo "🗄️ 部署数据库服务..."
+          kubectl apply -f k8s/postgres-deployment.yaml
+          
+          # 部署微服务
+          echo "🔧 部署微服务..."
+          kubectl apply -f k8s/microservices-deployments.yaml
+          kubectl apply -f k8s/microservices-services.yaml
+          
+          # 部署前端
+          echo "🔧 部署前端..."
+          kubectl apply -f k8s/frontend-deployment.yaml
+          
+          # 等待基础服务部署完成
+          echo "⏳ 等待基础服务部署完成..."
+          base_deployments=(
+              "postgres"
+              "user-service"
+              "activity-service"
+              "notification-service"
+              "frontend-service"
+          )
+          
+          for deployment in "${base_deployments[@]}"; do
+              echo "等待 $deployment 就绪..."
+              kubectl wait --for=condition=available --timeout=300s deployment/$deployment -n mywork
+          done
+          
+          # 部署 nginx 网关
+          echo "🌐 部署 nginx 网关..."
+          kubectl apply -f k8s/nginx-deployment.yaml
+          
+          # 等待nginx网关部署完成
+          echo "⏳ 等待 nginx 网关部署完成..."
+          kubectl wait --for=condition=available --timeout=300s deployment/nginx-gateway -n mywork
+          
+          # 部署 Ingress
+          echo "🚪 部署 Ingress..."
+          kubectl apply -f k8s/ingress-nginx-controller.yaml
+          kubectl apply -f k8s/ingress.yaml
+          
+          # 检查服务状态
+          echo "📊 检查服务状态..."
+          
+          echo "=== Pods ==="
+          kubectl get pods -n mywork
+          
+          echo "=== Services ==="
+          kubectl get services -n mywork
+          
+          echo "=== Ingress ==="
+          kubectl get ingress -n mywork
+          
+          echo "=== ConfigMaps ==="
+          kubectl get configmaps -n mywork
+          
+          echo "=== Deployments ==="
+          kubectl get deployments -n mywork
+          
+          # 获取访问信息
+          echo "🔗 获取访问信息..."
+          
+          # 获取 Ingress 信息
+          echo "=== Ingress 访问地址 ==="
+          kubectl get ingress -n mywork -o wide
+          
+          # 获取 NodePort 信息
+          echo "=== NodePort 访问地址 ==="
+          kubectl get service nginx-gateway-nodeport -n mywork -o wide
+          
+          # 获取集群 IP
+          CLUSTER_IP=$(kubectl get service nginx-gateway-service -n mywork -o jsonpath='{.spec.clusterIP}')
+          echo "=== 集群内访问地址 ==="
+          echo "http://$CLUSTER_IP"
+          
+          echo "✅ 部署完成！"
+          
+    - name: Deployment Summary
+      run: |
+        echo "## 🎉 部署完成！" >> $GITHUB_STEP_SUMMARY
+        echo "| 服务 | 状态 |" >> $GITHUB_STEP_SUMMARY
+        echo "|------|------|" >> $GITHUB_STEP_SUMMARY
+        echo "| 用户服务 | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
+        echo "| 活动服务 | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
+        echo "| 通知服务 | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
+        echo "| 前端服务 | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
+        echo "| Nginx网关 | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
+        echo "| Ingress | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY

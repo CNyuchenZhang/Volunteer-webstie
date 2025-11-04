@@ -12,10 +12,12 @@
 ### 作业与依赖（仅 PR 执行）
 
 - sast
-  - 步骤：Checkout → Gitleaks → 安装 Bandit/Semgrep/pip-audit → 生成 SARIF → 上传 `sast_reports`
-  - 产物：`gitleaks.sarif`、`bandit.sarif`、`semgrep.sarif`、`pip-audit-*.sarif`
+  - 步骤：Checkout → Gitleaks → 安装 Bandit/Semgrep/pip-audit → 生成 SARIF → 生成 HTML 报告 → 上传 `sast_reports`
+  - 产物：
+    - SARIF 格式：`gitleaks.sarif`、`bandit.sarif`、`semgrep.sarif`、`pip-audit-*.sarif`
+    - HTML 格式：`gitleaks.html`、`bandit.html`、`semgrep.html`、`pip-audit-*.html`、`sast-summary.html`（汇总报告）
   - 常见失败：规则过严/误报。当前 SAST 软失败（`|| true`），可逐步改硬失败。
-  - SARIF 查看方式：见下方 "如何查看 SARIF 文件" 章节
+  - 查看方式：见下方 "如何查看 SAST 安全扫描报告" 章节
 
 - unit（needs: sast）
   - 环境：内置 Postgres 15、Python 3.11、Node 18
@@ -84,7 +86,9 @@
 ## 📦 生成的构件（Artifacts）
 - 覆盖率：`coverage-*.xml`、`coverage-*-html/`（详细 HTML）、`coverage-summary.html`（汇总）
 - 集成/E2E：`newman-report.html`、`frontend/playwright-report/`
-- 安全扫描：`*.sarif`、`container_iac_scan_results`（Trivy HTML、Checkov TXT）
+- 安全扫描：
+  - SAST：`sast_reports`（SARIF + HTML 报告，包含 `sast-summary.html` 汇总）
+  - 容器/IaC：`container_iac_scan_results`（Trivy HTML、Checkov TXT）
 - DAST：`zap-report`（HTML、JSON、MD）
 - 性能：`perf_results`（JMeter 报告）
 
@@ -156,41 +160,62 @@ coverage html
 - ✅ 高亮显示未覆盖的代码行
 - ✅ 支持点击跳转到源代码
 
-### 🔍 如何查看 SARIF 文件
+### 🔒 如何查看 SAST 安全扫描报告
 
-SARIF (Static Analysis Results Interchange Format) 是安全扫描结果的标准化格式。
+**推荐方式：HTML 报告（最方便）**
 
-**方式 1：GitHub Code Scanning（推荐）**
+1. **在 GitHub Actions 中查看：**
+   - 进入仓库 → **Actions** → 选择对应的 Workflow Run
+   - 在页面右侧或底部找到 **Artifacts** 区域
+   - 下载 `sast_reports` 构件
+   - 解压后：
+     - **汇总报告**：打开 `sast-summary.html`（查看所有扫描工具的概览）
+     - **详细报告**：打开各个工具的 HTML 文件：
+       - `gitleaks.html` - 密钥泄露检测结果
+       - `bandit.html` - Python 代码安全问题
+       - `semgrep.html` - 通用代码安全扫描
+       - `pip-audit-*.html` - 各服务的依赖漏洞扫描
+
+2. **使用 GitHub CLI 下载：**
+```bash
+# 下载 sast_reports
+gh run download <run-id> -n sast_reports
+
+# 解压后查看
+open sast-summary.html  # macOS
+xdg-open sast-summary.html  # Linux
+start sast-summary.html  # Windows
+```
+
+**HTML 报告特点：**
+- ✅ 可视化表格展示所有安全问题
+- ✅ 按严重性分类（Error、Warning、Note）
+- ✅ 显示问题位置（文件路径和行号）
+- ✅ 清晰的问题描述
+- ✅ 汇总页面快速了解整体情况
+
+**其他查看方式（SARIF 格式）：**
+
+如果仍需要查看原始 SARIF 文件：
+
+**方式 1：GitHub Code Scanning**
 1. 进入仓库 → **Security** → **Code scanning alerts**
-2. 如果 SARIF 文件已通过 GitHub Actions 上传，漏洞会自动显示在这里
-3. 可以按工具、严重性、文件等筛选查看
+2. 如果 SARIF 文件已上传，漏洞会自动显示在这里
 
 **方式 2：VS Code SARIF Viewer 扩展**
-1. 在 VS Code 中安装扩展：**SARIF Viewer**（Microsoft）
-2. 下载 `sast_reports` artifact
-3. 解压后，在 VS Code 中打开任一 `.sarif` 文件
-4. 扩展会自动解析并显示在 **Problems** 面板中
+1. 安装扩展：**SARIF Viewer**（Microsoft）
+2. 在 VS Code 中打开 `.sarif` 文件
+3. 扩展会自动解析并显示在 **Problems** 面板中
 
-**方式 3：在线 SARIF 查看器**
+**方式 3：在线查看器**
 - 访问：https://sarifviewer.azurewebsites.net/
 - 上传 `.sarif` 文件即可查看
 
-**方式 4：命令行工具（sarif-tools）**
-```bash
-# 安装
-npm install -g @microsoft/sarif-tools
-
-# 转换为 HTML
-sarif-tools sarif-to-html gitleaks.sarif -o gitleaks-report.html
-```
-
-**SARIF 文件说明：**
-- `gitleaks.sarif` - 密钥泄露扫描结果
-- `bandit.sarif` - Python 代码安全问题
-- `semgrep.sarif` - 通用代码安全问题
-- `pip-audit-*.sarif` - Python 依赖漏洞扫描
-
-**注意：** SARIF 文件是 JSON 格式，可以直接用文本编辑器打开，但建议使用上述工具查看以获得更好的可视化效果。
+**扫描工具说明：**
+- **Gitleaks** - 检测代码中的密钥泄露（API 密钥、密码、令牌等）
+- **Bandit** - Python 代码安全漏洞扫描（SQL 注入、命令执行等）
+- **Semgrep** - 通用代码安全问题（跨语言，基于规则）
+- **pip-audit** - Python 依赖包漏洞扫描（按服务分别扫描）
 
 ## 🧪 本地复现（可选）
 ```bash
