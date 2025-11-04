@@ -50,9 +50,5 @@
     "@vitest/ui": "^1.0.0",
     "@vitest/coverage-v8": "^1.0.0",
     "jsdom": "^23.0.1"
-  },
-  "optionalDependencies": {
-    "@rollup/rollup-linux-x64-gnu": "^4.52.5",
-    "@rollup/rollup-linux-x64-musl": "^4.52.5"
   }
 }
