@@ -8,10 +8,53 @@ on:
     branches: [ "main" ]
 
 jobs:
-  # 测试阶段 - PR时运行
-  test:
+  # 代码与依赖安全扫描（PR）
+  sast:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Gitleaks (secrets)
+        uses: gitleaks/gitleaks-action@v2
+        with:
+          args: detect --source . --no-git -v --report-format sarif --report-path gitleaks.sarif
+
+      - name: Install SAST tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install bandit semgrep pip-audit
+
+      - name: Bandit (Python SAST)
+        run: bandit -r services -f sarif -o bandit.sarif || true
+
+      - name: Semgrep (generic SAST)
+        run: semgrep ci --sarif --output semgrep.sarif || true
+
+      - name: Dependency scan (pip-audit)
+        run: |
+          pip-audit -r services/user/requirements.txt -f sarif -o pip-audit-user.sarif || true
+          pip-audit -r services/activity/requirements.txt -f sarif -o pip-audit-activity.sarif || true
+          pip-audit -r services/notification/requirements.txt -f sarif -o pip-audit-notification.sarif || true
+
+      - name: Upload SAST artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sast_reports
+          path: |
+            *.sarif
+
+  # 单元测试与覆盖率（PR）
+  unit:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-22.04
+    needs: [sast]
     services:
       postgres:
         image: postgres:15
@@ -25,290 +68,474 @@ jobs:
           --health-retries 5
         ports:
           - 5432:5432
-          
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
-        
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '18'
-        cache: 'npm'
-        cache-dependency-path: frontend/package-lock.json
-        
-    - name: Install Python dependencies
-      run: |
-        pip install -r services/user/requirements.txt
-        pip install -r services/activity/requirements.txt
-        pip install -r services/notification/requirements.txt
-        
-    - name: Install frontend dependencies
-      run: |
-        cd frontend
-        npm ci
-        
-    - name: Run user service tests
-      run: |
-        cd services/user
-        python manage.py migrate --settings=user_service.settings.base
-        python manage.py test users.tests --verbosity=2 --settings=user_service.settings.base
-      env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
-        
-    - name: Run activity service tests
-      run: |
-        cd services/activity
-        python manage.py migrate --settings=activity_service.settings.base
-        python manage.py test activities.tests -v 2 --settings=activity_service.settings.base
-      env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
-        
-    - name: Run notification service tests
-      run: |
-        cd services/notification
-        python manage.py migrate --settings=notification_service.settings
-        python manage.py test notification_service.tests -v 2 --settings=notification_service.settings
-      env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
-        
-    - name: Run frontend build test
-      run: |
-        cd frontend
-        npm run build
-        echo "✅ Frontend build successful"
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install coverage
+          pip install -r services/user/requirements.txt
+          pip install -r services/activity/requirements.txt
+          pip install -r services/notification/requirements.txt
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Run user service tests (with coverage)
+        run: |
+          cd services/user
+          python manage.py migrate --settings=user_service.settings.base
+          coverage run --source=. manage.py test users.tests --noinput --settings=user_service.settings.base
+          coverage xml -o ../../coverage-user.xml
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+
+      - name: Run activity service tests (with coverage)
+        run: |
+          cd services/activity
+          python manage.py migrate --settings=activity_service.settings.base
+          coverage run --source=. manage.py test activities.tests --noinput --settings=activity_service.settings.base
+          coverage xml -o ../../coverage-activity.xml
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+
+      - name: Run notification service tests (with coverage)
+        run: |
+          cd services/notification
+          python manage.py migrate --settings=notification_service.settings
+          coverage run --source=. manage.py test notification_service.tests --noinput --settings=notification_service.settings
+          coverage xml -o ../../coverage-notification.xml
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+
+      - name: Enforce coverage threshold (aggregate ≥85%)
+        run: |
+          python - << 'PY'
+          import xml.etree.ElementTree as ET
+          import sys
+          files = [
+            'coverage-user.xml',
+            'coverage-activity.xml',
+            'coverage-notification.xml'
+          ]
+          total_covered = 0
+          total_lines = 0
+          for f in files:
+              tree = ET.parse(f)
+              cov = tree.getroot().attrib
+              total_covered += int(cov.get('lines-covered', 0))
+              total_lines += int(cov.get('lines-valid', 0))
+          pct = (total_covered / total_lines * 100) if total_lines else 0
+          print(f"Aggregate coverage: {pct:.2f}%")
+          sys.exit(0 if pct >= 85 else 1)
+          PY
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage_xml
+          path: |
+            coverage-*.xml
+
+      - name: Run frontend build test
+        run: |
+          cd frontend
+          npm run build
+          echo "✅ Frontend build successful"
+
+  # 集成与端到端测试（PR）
+  integration:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-22.04
+    needs: [unit]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Start stack for integration tests
+        run: docker compose -f docker-compose.test.yml up -d --build
+
+      - name: Wait for services health
+        run: |
+          for i in {1..60}; do
+            curl -fsS http://localhost:8001/api/v1/health/ && \
+            curl -fsS http://localhost:8002/api/v1/health/ && \
+            curl -fsS http://localhost:8003/api/v1/health/ && exit 0 || sleep 2
+          done
+          exit 1
+
+      - name: Install Newman and Playwright
+        run: |
+          sudo npm -g i newman
+          npm ci --prefix frontend
+          npx playwright install --with-deps
+
+      - name: Run Postman collection (API integration)
+        run: |
+          newman run tests/postman_collection.json \
+            --environment tests/postman_env.json \
+            --reporters cli,html \
+            --reporter-html-export newman-report.html
+
+      - name: Run Playwright E2E
+        run: npm test --prefix frontend -- --reporter=html --output=playwright-report || true
+
+      - name: Upload integration artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration_artifacts
+          path: |
+            newman-report.html
+            frontend/playwright-report
+
+  # 容器镜像与K8s清单扫描（PR）
+  container_iac_scan:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-22.04
+    needs: [unit]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build images
+        run: |
+          docker build -t user-service:ci ./services/user || true
+          docker build -t activity-service:ci ./services/activity || true
+          docker build -t notification-service:ci ./services/notification || true
+
+      - name: Trivy image scan (user)
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: user-service:ci
+          format: 'table'
+          exit-code: '0'
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Trivy image scan (activity)
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: activity-service:ci
+          format: 'table'
+          exit-code: '0'
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Trivy image scan (notification)
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: notification-service:ci
+          format: 'table'
+          exit-code: '0'
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Checkov scan (K8s manifests)
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: k8s
+          framework: kubernetes
+          soft_fail: true
+
+  # DAST（PR）：对本地集成环境进行基线动态扫描
+  dast:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-22.04
+    needs: [integration]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Ensure integration stack up
+        run: docker compose -f docker-compose.test.yml up -d --build
+
+      - name: OWASP ZAP baseline scan (user-service)
+        uses: zaproxy/action-baseline@v0.10.0
+        with:
+          target: 'http://localhost:8001'
+          rules_file_name: '.zap/rules.tsv'
+          cmd_options: '-a -m 5'
+
+      - name: Upload ZAP report
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap_report
+          path: report_html.html
+
+  # 性能测试（push 或手动），使用接近生产的进程模型
+  perf:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-22.04
+    needs: [integration]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Launch perf env (gunicorn)
+        run: docker compose -f docker-compose.perf.yml up -d --build
+
+      - name: k6 load test
+        uses: grafana/k6-action@v0.3.1
+        with:
+          filename: tests/perf/k6-load.js
+
+      - name: Install JMeter
+        run: sudo apt-get update && sudo apt-get install -y jmeter
+
+      - name: Run JMeter plan
+        run: |
+          jmeter -n -t tests/perf/jmeter_test.jmx -l jmeter.jtl -e -o jmeter-report
+
+      - name: Upload perf artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf_results
+          path: |
+            jmeter.jtl
+            jmeter-report
 
   # 部署阶段 - 推送到main分支时运行
   deploy:
     if: github.event_name == 'push'
     runs-on: ubuntu-22.04
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
       
-    - name: Deploy to Production
-      uses: appleboy/ssh-action@v0.1.10
-      with:
-        host: ${{ secrets.SSH_HOST }}
-        username: ${{ secrets.SSH_USER }}
-        key: ${{ secrets.aliCloud }}
-        script: |
-          echo "🚀 开始部署 Volunteer Platform..."
+      - name: Deploy to Production
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.aliCloud }}
+          script: |
+            echo "🚀 开始部署 Volunteer Platform..."
+            
+            # 进入项目目录
+            cd /home/project/Volunteer-platform
+            
+            # 更新代码
+            echo "📥 更新代码..."
+            git pull
           
-          # 进入项目目录
-          cd /home/project/Volunteer-platform
+            # 构建镜像
+            echo "🔨 构建镜像..."
+            docker compose build
+            
+            # 检查现有镜像
+            echo "1. 检查现有镜像..."
+            docker images | grep jsrgzyc
+            
+            # 导入镜像到containerd
+            echo "2. 导入镜像到containerd..."
           
-          # 更新代码
-          echo "📥 更新代码..."
-          git pull
+            echo "导入user-service..."
+            if docker images | grep -q "jsrgzyc/user-service"; then
+                docker save jsrgzyc/user-service:latest | ctr -n k8s.io images import -
+                echo "✅ user-service导入成功"
+            else
+                echo "❌ user-service镜像不存在"
+            fi
           
-          # 构建镜像
-          echo "🔨 构建镜像..."
-          docker compose build
+            echo "导入activity-service..."
+            if docker images | grep -q "jsrgzyc/activity-service"; then
+                docker save jsrgzyc/activity-service:latest | ctr -n k8s.io images import -
+                echo "✅ activity-service导入成功"
+            else
+                echo "❌ activity-service镜像不存在"
+            fi
           
-          # 检查现有镜像
-          echo "1. 检查现有镜像..."
-          docker images | grep jsrgzyc
+            echo "导入notification-service..."
+            if docker images | grep -q "jsrgzyc/notification-service"; then
+                docker save jsrgzyc/notification-service:latest | ctr -n k8s.io images import -
+                echo "✅ notification-service导入成功"
+            else
+                echo "❌ notification-service镜像不存在"
+            fi
           
-          # 导入镜像到containerd
-          echo "2. 导入镜像到containerd..."
+            echo "导入frontend..."
+            if docker images | grep -q "jsrgzyc/frontend"; then
+                docker save jsrgzyc/frontend:latest | ctr -n k8s.io images import -
+                echo "✅ frontend导入成功"
+            else
+                echo "❌ frontend镜像不存在"
+            fi
           
-          echo "导入user-service..."
-          if docker images | grep -q "jsrgzyc/user-service"; then
-              docker save jsrgzyc/user-service:latest | ctr -n k8s.io images import -
-              echo "✅ user-service导入成功"
-          else
-              echo "❌ user-service镜像不存在"
-          fi
+            # 验证镜像导入完成
+            echo "🔍 验证镜像导入状态..."
+            required_images=(
+                "jsrgzyc/user-service:latest"
+                "jsrgzyc/activity-service:latest"
+                "jsrgzyc/notification-service:latest"
+                "jsrgzyc/frontend:latest"
+            )
+            
+            # 等待并验证镜像导入完成
+            max_attempts=10
+            attempt=1
+            
+            while [ $attempt -le $max_attempts ]; do
+                echo "检查镜像导入状态 (尝试 $attempt/$max_attempts)..."
+                all_imported=true
+                
+                for image in "${required_images[@]}"; do
+                    if ctr -n k8s.io images list | grep -q "$image"; then
+                        echo "✅ $image 已导入"
+                    else
+                        echo "⏳ $image 尚未导入，等待中..."
+                        all_imported=false
+                    fi
+                done
+                
+                if [ "$all_imported" = true ]; then
+                    echo "✅ 所有镜像导入完成！"
+                    break
+                fi
+                
+                if [ $attempt -eq $max_attempts ]; then
+                    echo "❌ 镜像导入超时，以下镜像未能成功导入："
+                    for image in "${required_images[@]}"; do
+                        if ! ctr -n k8s.io images list | grep -q "$image"; then
+                            echo "  - $image"
+                        fi
+                    done
+                    exit 1
+                fi
+                
+                echo "等待2秒后重试..."
+                sleep 2
+                attempt=$((attempt + 1))
+            done
+            
+            echo "✅ 所有镜像导入完成，开始Kubernetes部署..."
+            
+            # 检查 kubectl 是否可用
+            echo "🔍 检查 kubectl 是否可用..."
+            if ! command -v kubectl &> /dev/null; then
+                echo "❌ kubectl 未安装或不在 PATH 中"
+                exit 1
+            else
+                echo "✅ kubectl 可用"
+            fi
+            
+            # 检查集群连接
+            echo "🔗 检查 Kubernetes 集群连接..."
+            if kubectl cluster-info >/dev/null 2>&1; then
+                echo "✅ Kubernetes 集群连接正常"
+            else
+                echo "❌ 无法连接到 Kubernetes 集群，请检查 kubeconfig、网络与集群状态"
+                exit 1
+            fi
           
-          echo "导入activity-service..."
-          if docker images | grep -q "jsrgzyc/activity-service"; then
-              docker save jsrgzyc/activity-service:latest | ctr -n k8s.io images import -
-              echo "✅ activity-service导入成功"
-          else
-              echo "❌ activity-service镜像不存在"
-          fi
+            # 创建命名空间
+            echo "📦 创建命名空间..."
+            kubectl apply -f k8s/namespace.yaml
+            
+            # 创建配置
+            echo "⚙️ 创建配置..."
+            kubectl apply -f k8s/configmap.yaml
+            
+            # 部署数据库服务
+            echo "🗄️ 部署数据库服务..."
+            kubectl apply -f k8s/postgres-deployment.yaml
+            
+            # 部署微服务
+            echo "🔧 部署微服务..."
+            kubectl apply -f k8s/microservices-deployments.yaml
+            kubectl apply -f k8s/microservices-services.yaml
+            
+            # 部署前端
+            echo "🔧 部署前端..."
+            kubectl apply -f k8s/frontend-deployment.yaml
+            
+            # 等待基础服务部署完成
+            echo "⏳ 等待基础服务部署完成..."
+            base_deployments=(
+                "postgres"
+                "user-service"
+                "activity-service"
+                "notification-service"
+                "frontend-service"
+            )
+            
+            for deployment in "${base_deployments[@]}"; do
+                echo "等待 $deployment 就绪..."
+                kubectl wait --for=condition=available --timeout=300s deployment/$deployment -n mywork
+            done
+            
+            # 部署 nginx 网关
+            echo "🌐 部署 nginx 网关..."
+            kubectl apply -f k8s/nginx-deployment.yaml
+            
+            # 等待nginx网关部署完成
+            echo "⏳ 等待 nginx 网关部署完成..."
+            kubectl wait --for=condition=available --timeout=300s deployment/nginx-gateway -n mywork
+            
+            # 部署 Ingress
+            echo "🚪 部署 Ingress..."
+            kubectl apply -f k8s/ingress-nginx-controller.yaml
+            kubectl apply -f k8s/ingress.yaml
+            
+            # 检查服务状态
+            echo "📊 检查服务状态..."
+            
+            echo "=== Pods ==="
+            kubectl get pods -n mywork
+            
+            echo "=== Services ==="
+            kubectl get services -n mywork
+            
+            echo "=== Ingress ==="
+            kubectl get ingress -n mywork
+            
+            echo "=== ConfigMaps ==="
+            kubectl get configmaps -n mywork
+            
+            echo "=== Deployments ==="
+            kubectl get deployments -n mywork
+            
+            # 获取访问信息
+            echo "🔗 获取访问信息..."
+            
+            # 获取 Ingress 信息
+            echo "=== Ingress 访问地址 ==="
+            kubectl get ingress -n mywork -o wide
+            
+            # 获取 NodePort 信息
+            echo "=== NodePort 访问地址 ==="
+            kubectl get service nginx-gateway-nodeport -n mywork -o wide
+            
+            # 获取集群 IP
+            CLUSTER_IP=$(kubectl get service nginx-gateway-service -n mywork -o jsonpath='{.spec.clusterIP}')
+            echo "=== 集群内访问地址 ==="
+            echo "http://$CLUSTER_IP"
+            
+            echo "✅ 部署完成！"
           
-          echo "导入notification-service..."
-          if docker images | grep -q "jsrgzyc/notification-service"; then
-              docker save jsrgzyc/notification-service:latest | ctr -n k8s.io images import -
-              echo "✅ notification-service导入成功"
-          else
-              echo "❌ notification-service镜像不存在"
-          fi
-          
-          echo "导入frontend..."
-          if docker images | grep -q "jsrgzyc/frontend"; then
-              docker save jsrgzyc/frontend:latest | ctr -n k8s.io images import -
-              echo "✅ frontend导入成功"
-          else
-              echo "❌ frontend镜像不存在"
-          fi
-          
-          # 验证镜像导入完成
-          echo "🔍 验证镜像导入状态..."
-          required_images=(
-              "jsrgzyc/user-service:latest"
-              "jsrgzyc/activity-service:latest"
-              "jsrgzyc/notification-service:latest"
-              "jsrgzyc/frontend:latest"
-          )
-          
-          # 等待并验证镜像导入完成
-          max_attempts=10
-          attempt=1
-          
-          while [ $attempt -le $max_attempts ]; do
-              echo "检查镜像导入状态 (尝试 $attempt/$max_attempts)..."
-              all_imported=true
-              
-              for image in "${required_images[@]}"; do
-                  if ctr -n k8s.io images list | grep -q "$image"; then
-                      echo "✅ $image 已导入"
-                  else
-                      echo "⏳ $image 尚未导入，等待中..."
-                      all_imported=false
-                  fi
-              done
-              
-              if [ "$all_imported" = true ]; then
-                  echo "✅ 所有镜像导入完成！"
-                  break
-              fi
-              
-              if [ $attempt -eq $max_attempts ]; then
-                  echo "❌ 镜像导入超时，以下镜像未能成功导入："
-                  for image in "${required_images[@]}"; do
-                      if ! ctr -n k8s.io images list | grep -q "$image"; then
-                          echo "  - $image"
-                      fi
-                  done
-                  exit 1
-              fi
-              
-              echo "等待2秒后重试..."
-              sleep 2
-              attempt=$((attempt + 1))
-          done
-          
-          echo "✅ 所有镜像导入完成，开始Kubernetes部署..."
-          
-          # 检查 kubectl 是否可用
-          echo "🔍 检查 kubectl 是否可用..."
-          if ! command -v kubectl &> /dev/null; then
-              echo "❌ kubectl 未安装或不在 PATH 中"
-              exit 1
-          else
-              echo "✅ kubectl 可用"
-          fi
-          
-          # 检查集群连接
-          echo "🔗 检查 Kubernetes 集群连接..."
-          if kubectl cluster-info >/dev/null 2>&1; then
-              echo "✅ Kubernetes 集群连接正常"
-          else
-              echo "❌ 无法连接到 Kubernetes 集群，请检查 kubeconfig、网络与集群状态"
-              exit 1
-          fi
-          
-          # 创建命名空间
-          echo "📦 创建命名空间..."
-          kubectl apply -f k8s/namespace.yaml
-          
-          # 创建配置
-          echo "⚙️ 创建配置..."
-          kubectl apply -f k8s/configmap.yaml
-          
-          # 部署数据库服务
-          echo "🗄️ 部署数据库服务..."
-          kubectl apply -f k8s/postgres-deployment.yaml
-          
-          # 部署微服务
-          echo "🔧 部署微服务..."
-          kubectl apply -f k8s/microservices-deployments.yaml
-          kubectl apply -f k8s/microservices-services.yaml
-          
-          # 部署前端
-          echo "🔧 部署前端..."
-          kubectl apply -f k8s/frontend-deployment.yaml
-          
-          # 等待基础服务部署完成
-          echo "⏳ 等待基础服务部署完成..."
-          base_deployments=(
-              "postgres"
-              "user-service"
-              "activity-service"
-              "notification-service"
-              "frontend-service"
-          )
-          
-          for deployment in "${base_deployments[@]}"; do
-              echo "等待 $deployment 就绪..."
-              kubectl wait --for=condition=available --timeout=300s deployment/$deployment -n mywork
-          done
-          
-          # 部署 nginx 网关
-          echo "🌐 部署 nginx 网关..."
-          kubectl apply -f k8s/nginx-deployment.yaml
-          
-          # 等待nginx网关部署完成
-          echo "⏳ 等待 nginx 网关部署完成..."
-          kubectl wait --for=condition=available --timeout=300s deployment/nginx-gateway -n mywork
-          
-          # 部署 Ingress
-          echo "🚪 部署 Ingress..."
-          kubectl apply -f k8s/ingress-nginx-controller.yaml
-          kubectl apply -f k8s/ingress.yaml
-          
-          # 检查服务状态
-          echo "📊 检查服务状态..."
-          
-          echo "=== Pods ==="
-          kubectl get pods -n mywork
-          
-          echo "=== Services ==="
-          kubectl get services -n mywork
-          
-          echo "=== Ingress ==="
-          kubectl get ingress -n mywork
-          
-          echo "=== ConfigMaps ==="
-          kubectl get configmaps -n mywork
-          
-          echo "=== Deployments ==="
-          kubectl get deployments -n mywork
-          
-          # 获取访问信息
-          echo "🔗 获取访问信息..."
-          
-          # 获取 Ingress 信息
-          echo "=== Ingress 访问地址 ==="
-          kubectl get ingress -n mywork -o wide
-          
-          # 获取 NodePort 信息
-          echo "=== NodePort 访问地址 ==="
-          kubectl get service nginx-gateway-nodeport -n mywork -o wide
-          
-          # 获取集群 IP
-          CLUSTER_IP=$(kubectl get service nginx-gateway-service -n mywork -o jsonpath='{.spec.clusterIP}')
-          echo "=== 集群内访问地址 ==="
-          echo "http://$CLUSTER_IP"
-          
-          echo "✅ 部署完成！"
-          
-    - name: Deployment Summary
-      run: |
-        echo "## 🎉 部署完成！" >> $GITHUB_STEP_SUMMARY
-        echo "| 服务 | 状态 |" >> $GITHUB_STEP_SUMMARY
-        echo "|------|------|" >> $GITHUB_STEP_SUMMARY
-        echo "| 用户服务 | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
-        echo "| 活动服务 | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
-        echo "| 通知服务 | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
-        echo "| 前端服务 | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
-        echo "| Nginx网关 | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
-        echo "| Ingress | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
+      - name: Deployment Summary
+        run: |
+          echo "## 🎉 部署完成！" >> $GITHUB_STEP_SUMMARY
+          echo "| 服务 | 状态 |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|------|" >> $GITHUB_STEP_SUMMARY
+          echo "| 用户服务 | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
+          echo "| 活动服务 | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
+          echo "| 通知服务 | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
+          echo "| 前端服务 | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
+          echo "| Nginx网关 | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
+          echo "| Ingress | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY

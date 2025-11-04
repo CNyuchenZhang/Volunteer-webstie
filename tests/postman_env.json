@@ -1,0 +1,9 @@
+{
+  "name": "Local Docker",
+  "values": [
+    {"key": "base_url_user", "value": "http://localhost:8001", "enabled": true},
+    {"key": "base_url_activity", "value": "http://localhost:8002", "enabled": true},
+    {"key": "base_url_notification", "value": "http://localhost:8003", "enabled": true}
+  ]
+}
+

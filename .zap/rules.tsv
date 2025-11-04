@@ -1,0 +1,5 @@
+10020	IGNORE	Cache-control and Pragma HTTP header not set
+10038	IGNORE	Content Security Policy (CSP) Header Not Set
+10055	WARN	X-Content-Type-Options Header Missing
+10054	WARN	X-Frame-Options Header Missing
+

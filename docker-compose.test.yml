@@ -1,0 +1,47 @@
+version: "3.9"
+
+services:
+  user-service:
+    build:
+      context: ./services/user
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8000"
+    environment:
+      - DJANGO_SETTINGS_MODULE=user_service.settings.base
+    command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+
+  activity-service:
+    build:
+      context: ./services/activity
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8000"
+    depends_on:
+      - user-service
+    environment:
+      - DJANGO_SETTINGS_MODULE=activity_service.settings.base
+    command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+
+  notification-service:
+    build:
+      context: ./services/notification
+      dockerfile: Dockerfile
+    ports:
+      - "8003:8000"
+    depends_on:
+      - user-service
+      - activity-service
+    command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "8080:80"
+    depends_on:
+      - user-service
+      - activity-service
+      - notification-service
+

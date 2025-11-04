@@ -1,0 +1,43 @@
+version: "3.9"
+
+services:
+  user-service:
+    build:
+      context: ./services/user
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8000"
+    command: ["gunicorn", "user_service.wsgi:application", "-b", "0.0.0.0:8000", "-w", "3"]
+
+  activity-service:
+    build:
+      context: ./services/activity
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8000"
+    depends_on:
+      - user-service
+    command: ["gunicorn", "activity_service.wsgi:application", "-b", "0.0.0.0:8000", "-w", "3"]
+
+  notification-service:
+    build:
+      context: ./services/notification
+      dockerfile: Dockerfile
+    ports:
+      - "8003:8000"
+    depends_on:
+      - user-service
+      - activity-service
+    command: ["gunicorn", "notification_service.wsgi:application", "-b", "0.0.0.0:8000", "-w", "3"]
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "8080:80"
+    depends_on:
+      - user-service
+      - activity-service
+      - notification-service
+

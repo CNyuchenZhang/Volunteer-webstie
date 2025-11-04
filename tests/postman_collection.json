@@ -1,0 +1,30 @@
+{
+  "info": {
+    "name": "Volunteer Platform API - Integration",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "User Service Health",
+      "request": {"method": "GET", "url": "{{base_url_user}}/api/v1/health/"},
+      "event": [{"listen": "test", "script": {"exec": [
+        "pm.test('status 200', function () { pm.response.to.have.status(200); });"
+      ]}}]
+    },
+    {
+      "name": "Activity Service Health",
+      "request": {"method": "GET", "url": "{{base_url_activity}}/api/v1/health/"},
+      "event": [{"listen": "test", "script": {"exec": [
+        "pm.test('status 200', function () { pm.response.to.have.status(200); });"
+      ]}}]
+    },
+    {
+      "name": "Notification Service Health",
+      "request": {"method": "GET", "url": "{{base_url_notification}}/api/v1/health/"},
+      "event": [{"listen": "test", "script": {"exec": [
+        "pm.test('status 200', function () { pm.response.to.have.status(200); });"
+      ]}}]
+    }
+  ]
+}
+
