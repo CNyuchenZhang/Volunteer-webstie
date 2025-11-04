@@ -74,17 +74,22 @@ class ActivityCreateSerializer(serializers.ModelSerializer):
         
         # 设置组织者信息
         request = self.context.get('request')
-        if request and hasattr(request, 'user') and request.user.is_authenticated:
-            validated_data['organizer_id'] = request.user.id
-            # 安全地获取用户姓名
-            first_name = getattr(request.user, 'first_name', '') or ''
-            last_name = getattr(request.user, 'last_name', '') or ''
-            validated_data['organizer_name'] = f"{first_name} {last_name}".strip() or request.user.username
-            validated_data['organizer_email'] = request.user.email
-            validated_data['organizer_phone'] = getattr(request.user, 'phone', '') or ''
-        else:
-            # 如果未认证，抛出错误
+        # 检查认证：request 必须存在，有 user 属性，且 user 已认证
+        if not request:
             raise serializers.ValidationError("Authentication required to create activities")
+        if not hasattr(request, 'user'):
+            raise serializers.ValidationError("Authentication required to create activities")
+        if not (hasattr(request.user, 'is_authenticated') and request.user.is_authenticated):
+            raise serializers.ValidationError("Authentication required to create activities")
+        
+        # 用户已认证，设置组织者信息
+        validated_data['organizer_id'] = request.user.id
+        # 安全地获取用户姓名
+        first_name = getattr(request.user, 'first_name', '') or ''
+        last_name = getattr(request.user, 'last_name', '') or ''
+        validated_data['organizer_name'] = f"{first_name} {last_name}".strip() or request.user.username
+        validated_data['organizer_email'] = request.user.email
+        validated_data['organizer_phone'] = getattr(request.user, 'phone', '') or ''
         
         # 新创建的活动默认为待审批状态
         validated_data['status'] = 'pending_approval'

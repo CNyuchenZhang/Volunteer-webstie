@@ -1936,16 +1936,18 @@ class ActivityParticipantViewSetTestCase(APITestCase):
     
     def test_list_participants(self):
         """测试列出参与者"""
-        ActivityParticipant.objects.create(
+        # 创建当前用户的参与者（volunteer_user.id = 2）
+        participant1 = ActivityParticipant.objects.create(
             activity=self.activity,
-            user_id=2,
+            user_id=2,  # 当前用户
             user_name='Volunteer 1',
             user_email='volunteer1@test.com',
             status='approved'
         )
-        ActivityParticipant.objects.create(
+        # 创建另一个用户的参与者（用于测试权限过滤）
+        participant2 = ActivityParticipant.objects.create(
             activity=self.activity,
-            user_id=3,
+            user_id=3,  # 其他用户
             user_name='Volunteer 2',
             user_email='volunteer2@test.com',
             status='applied'
@@ -1956,7 +1958,15 @@ class ActivityParticipantViewSetTestCase(APITestCase):
         response = self.client.get(url)
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data['results']), 2)
+        # 志愿者只能看到自己的申请（user_id=2），所以应该只返回1个参与者
+        if 'results' in response.data:
+            self.assertEqual(len(response.data['results']), 1, "志愿者应该只能看到自己的申请")
+            # 验证返回的是当前用户的参与者
+            self.assertEqual(response.data['results'][0]['user_id'], 2)
+        else:
+            # 如果没有分页，直接检查列表长度
+            self.assertEqual(len(response.data), 1, "志愿者应该只能看到自己的申请")
+            self.assertEqual(response.data[0]['user_id'], 2)
 
 
 class ActivitySerializerTestCase(APITestCase):
@@ -2116,7 +2126,7 @@ class AdminActivityApprovalViewSetTestCase(APITestCase):
     def test_non_admin_cannot_update_approval(self):
         """测试非管理员无法更新审批状态"""
         self.client.force_authenticate(user=self.volunteer_user)
-        url = reverse('admin-activity-approval-detail', kwargs={'pk': self.activity.pk})
+        url = reverse('admin-activity-detail', kwargs={'pk': self.activity.pk})
         response = self.client.patch(url, {
             'approval_status': 'approved'
         }, format='json')
@@ -2157,18 +2167,25 @@ class ActivityCreateSerializerTestCase(APITestCase):
         request = Mock()
         request.user = self.organizer_user
         
+        start_date = timezone.now() + timedelta(days=1)
+        end_date = timezone.now() + timedelta(days=1, hours=2)
+        
+        # DRF 的 DateTimeField 需要字符串格式，使用 ISO 8601 格式
         serializer = ActivityCreateSerializer(data={
             'title': '新活动',
             'description': '活动描述',
             'category': self.category.id,
             'location': '测试地点',
-            'start_date': (timezone.now() + timedelta(days=1)).isoformat(),
-            'end_date': (timezone.now() + timedelta(days=1, hours=2)).isoformat(),
+            'start_date': start_date.isoformat(),
+            'end_date': end_date.isoformat(),
             'max_participants': 10,
             'images': [image]
         }, context={'request': request})
         
-        self.assertTrue(serializer.is_valid())
+        if not serializer.is_valid():
+            print(f"Serializer errors: {serializer.errors}")
+        
+        self.assertTrue(serializer.is_valid(), f"Serializer validation failed: {serializer.errors}")
         activity = serializer.save()
         
         self.assertEqual(activity.title, '新活动')
@@ -2191,5 +2208,7 @@ class ActivityCreateSerializerTestCase(APITestCase):
             'max_participants': 10
         }, context={'request': None})
         
+        # is_valid() 不会触发认证检查，只有在 save() 时才会检查
+        serializer.is_valid()
         with self.assertRaises(ValidationError):
-            serializer.is_valid(raise_exception=True)
+            serializer.save()
