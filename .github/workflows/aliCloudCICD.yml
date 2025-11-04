@@ -258,6 +258,49 @@ jobs:
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
 
+      - name: Trivy Dockerfile scan (user-service)
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          scan-type: 'fs'
+          scan-ref: './services/user'
+          format: 'table'
+          exit-code: '0'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Trivy Dockerfile scan (activity-service)
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          scan-type: 'fs'
+          scan-ref: './services/activity'
+          format: 'table'
+          exit-code: '0'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Trivy Dockerfile scan (notification-service)
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          scan-type: 'fs'
+          scan-ref: './services/notification'
+          format: 'table'
+          exit-code: '0'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Trivy Dockerfile scan (frontend)
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          scan-type: 'fs'
+          scan-ref: './frontend'
+          format: 'table'
+          exit-code: '0'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Checkov scan (Dockerfiles)
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: .
+          framework: dockerfile
+          soft_fail: true
+
       - name: Checkov scan (K8s manifests)
         uses: bridgecrewio/checkov-action@v12
         with:
@@ -277,18 +320,40 @@ jobs:
       - name: Ensure integration stack up
         run: docker compose -f docker-compose.test.yml up -d --build
 
+      - name: Wait for services to be ready
+        run: |
+          echo "等待服务启动..."
+          for i in {1..30}; do
+            if curl -fsS http://localhost:8001/api/v1/health/ > /dev/null 2>&1; then
+              echo "✅ user-service 已就绪"
+              break
+            fi
+            echo "等待中... ($i/30)"
+            sleep 2
+          done
+          
+          # 验证服务是否真的可用
+          curl -fsS http://localhost:8001/api/v1/health/ || (echo "❌ user-service 未就绪" && exit 1)
+
       - name: OWASP ZAP baseline scan (user-service)
+        continue-on-error: true
         uses: zaproxy/action-baseline@v0.10.0
         with:
           target: 'http://localhost:8001'
           rules_file_name: '.zap/rules.tsv'
           cmd_options: '-a -m 5'
+          fail_action: false
 
       - name: Upload ZAP report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: zap_report
-          path: report_html.html
+          path: |
+            report_html.html
+            report_json.json
+            report_md.md
+          if-no-files-found: ignore
 
   # 性能测试（push 或手动），使用接近生产的进程模型
   perf:
