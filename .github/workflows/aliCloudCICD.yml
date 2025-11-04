@@ -340,6 +340,12 @@ jobs:
           cd frontend
           npm ci || npm install
 
+      - name: Run frontend unit tests (with coverage)
+        run: |
+          cd frontend
+          npm run test:unit:coverage || npm run test:unit || true
+        continue-on-error: true
+
       - name: Run user service tests (with coverage)
         run: |
           cd services/user
@@ -375,7 +381,11 @@ jobs:
         run: |
           python - << 'PY'
           import xml.etree.ElementTree as ET
+          import json
+          import os
           import sys
+          
+          # 后端服务覆盖率
           files = [
             'coverage-user.xml',
             'coverage-activity.xml',
@@ -383,6 +393,7 @@ jobs:
           ]
           total_covered = 0
           total_lines = 0
+          
           for f in files:
               try:
                   tree = ET.parse(f)
@@ -391,8 +402,29 @@ jobs:
                   total_lines += int(cov.get('lines-valid', 0))
               except Exception as e:
                   print(f"Warning: Could not parse {f}: {e}")
+          
+          # 前端覆盖率
+          frontend_coverage_file = 'frontend/coverage/coverage-summary.json'
+          if os.path.exists(frontend_coverage_file):
+              try:
+                  with open(frontend_coverage_file, 'r', encoding='utf-8') as f:
+                      frontend_data = json.load(f)
+                  
+                  frontend_total = frontend_data.get('total', {})
+                  frontend_lines = frontend_total.get('lines', {})
+                  frontend_covered = frontend_lines.get('covered', 0)
+                  frontend_total_lines = frontend_lines.get('total', 0)
+                  
+                  if frontend_total_lines > 0:
+                      total_covered += frontend_covered
+                      total_lines += frontend_total_lines
+                      frontend_pct = (frontend_covered / frontend_total_lines * 100)
+                      print(f"前端覆盖率: {frontend_pct:.2f}% ({frontend_covered}/{frontend_total_lines})")
+              except Exception as e:
+                  print(f"Warning: Could not parse frontend coverage: {e}")
+          
           pct = (total_covered / total_lines * 100) if total_lines else 0
-          print(f"Aggregate coverage: {pct:.2f}%")
+          print(f"Aggregate coverage (后端 + 前端): {pct:.2f}%")
           if pct < 85:
               print(f"⚠️  Coverage is below target (85%), current: {pct:.2f}%")
               print("This is a warning and will not block the CI pipeline.")
@@ -405,14 +437,16 @@ jobs:
         run: |
           python3 << 'PYTHON_SCRIPT'
           import xml.etree.ElementTree as ET
-          import os
           import json
+          import os
+          import glob
           
           # 解析所有覆盖率 XML 文件
           coverage_data = {}
           total_covered = 0
           total_lines = 0
           
+          # 后端服务覆盖率
           for xml_file in ['coverage-user.xml', 'coverage-activity.xml', 'coverage-notification.xml']:
               if os.path.exists(xml_file):
                   try:
@@ -433,6 +467,34 @@ jobs:
                       total_lines += lines
                   except Exception as e:
                       print(f"Warning: Could not parse {xml_file}: {e}")
+          
+          # 前端覆盖率（从 Vitest coverage 报告）
+          frontend_coverage_file = 'frontend/coverage/coverage-summary.json'
+          if os.path.exists(frontend_coverage_file):
+              try:
+                  with open(frontend_coverage_file, 'r', encoding='utf-8') as f:
+                      frontend_data = json.load(f)
+                  
+                  # 计算前端总覆盖率
+                  frontend_total = frontend_data.get('total', {})
+                  frontend_lines = frontend_total.get('lines', {})
+                  frontend_covered = frontend_lines.get('covered', 0)
+                  frontend_total_lines = frontend_lines.get('total', 0)
+                  
+                  if frontend_total_lines > 0:
+                      frontend_percentage = (frontend_covered / frontend_total_lines * 100)
+                      coverage_data['frontend'] = {
+                          'covered': frontend_covered,
+                          'total': frontend_total_lines,
+                          'percentage': frontend_percentage
+                      }
+                      total_covered += frontend_covered
+                      total_lines += frontend_total_lines
+                      print(f"✅ 前端覆盖率: {frontend_percentage:.2f}% ({frontend_covered}/{frontend_total_lines})")
+              except Exception as e:
+                  print(f"⚠️  无法解析前端覆盖率: {e}")
+          else:
+              print("⚠️  前端覆盖率文件不存在，跳过前端覆盖率统计")
           
           aggregate_percentage = (total_covered / total_lines * 100) if total_lines > 0 else 0
           
@@ -518,6 +580,15 @@ jobs:
                       <a href="coverage-user-html/index.html" target="_blank">User Service Details</a>
                       <a href="coverage-activity-html/index.html" target="_blank">Activity Service Details</a>
                       <a href="coverage-notification-html/index.html" target="_blank">Notification Service Details</a>
+          """
+          
+          # 添加前端覆盖率链接（如果存在）
+          if 'frontend' in coverage_data:
+              html += """
+                      <a href="frontend/coverage/index.html" target="_blank">Frontend Details</a>
+          """
+          
+          html += """
                   </div>
               </div>
           </body>
@@ -537,6 +608,7 @@ jobs:
             coverage-*.xml
             coverage-*-html/
             coverage-summary.html
+            frontend/coverage/
           if-no-files-found: ignore
           retention-days: 7
 

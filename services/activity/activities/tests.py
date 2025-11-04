@@ -7,7 +7,9 @@ from django.utils import timezone
 from rest_framework.test import APITestCase, APIClient
 from rest_framework import status
 from datetime import timedelta
-from .models import Activity, ActivityCategory
+import unittest
+import unittest.mock
+from .models import Activity, ActivityCategory, ActivityParticipant
 
 
 class ActivityCategoryTestCase(TestCase):
@@ -1604,3 +1606,590 @@ class ActivityParticipantFieldsTestCase(TestCase):
         )
         
         self.assertEqual(participant.rating, 5)
+
+
+class ActivityViewSetApproveTestCase(APITestCase):
+    """测试活动审批视图"""
+    
+    def setUp(self):
+        self.category = ActivityCategory.objects.create(name='测试分类')
+        self.activity = Activity.objects.create(
+            title='待审批活动',
+            description='测试',
+            organizer_id=1,
+            organizer_name='Test Organizer',
+            organizer_email='organizer@test.com',
+            category=self.category,
+            location='测试地点',
+            start_date=timezone.now() + timedelta(days=1),
+            end_date=timezone.now() + timedelta(days=1, hours=2),
+            max_participants=10,
+            approval_status='pending'
+        )
+        # 创建模拟管理员用户
+        self.admin_user = type('User', (), {
+            'id': 8,
+            'username': 'admin',
+            'email': 'admin@test.com',
+            'role': 'admin',
+            'is_authenticated': True,
+            'is_anonymous': False,
+            'first_name': 'Admin',
+            'last_name': 'User',
+            'phone': ''
+        })()
+    
+    @unittest.mock.patch('requests.post')
+    def test_approve_activity_as_admin(self, mock_post):
+        """测试管理员审批活动"""
+        mock_post.return_value.status_code = 201
+        
+        self.client.force_authenticate(user=self.admin_user)
+        url = reverse('activity-approve', kwargs={'pk': self.activity.pk})
+        response = self.client.patch(url, {
+            'approval_status': 'approved',
+            'admin_notes': '通过审批'
+        }, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.activity.refresh_from_db()
+        self.assertEqual(self.activity.approval_status, 'approved')
+        self.assertEqual(self.activity.status, 'approved')
+        self.assertEqual(self.activity.approved_by_id, 8)
+    
+    @unittest.mock.patch('requests.post')
+    def test_reject_activity_as_admin(self, mock_post):
+        """测试管理员拒绝活动"""
+        mock_post.return_value.status_code = 201
+        
+        self.client.force_authenticate(user=self.admin_user)
+        url = reverse('activity-approve', kwargs={'pk': self.activity.pk})
+        response = self.client.patch(url, {
+            'approval_status': 'rejected',
+            'rejection_reason': '不符合要求',
+            'admin_notes': '拒绝原因'
+        }, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.activity.refresh_from_db()
+        self.assertEqual(self.activity.approval_status, 'rejected')
+        self.assertEqual(self.activity.status, 'rejected')
+        self.assertEqual(self.activity.rejection_reason, '不符合要求')
+    
+    def test_approve_activity_as_non_admin(self):
+        """测试非管理员无法审批活动"""
+        volunteer_user = type('User', (), {
+            'id': 2,
+            'username': 'volunteer',
+            'email': 'volunteer@test.com',
+            'role': 'volunteer',
+            'is_authenticated': True,
+            'is_anonymous': False,
+            'first_name': 'Volunteer',
+            'last_name': 'User',
+            'phone': ''
+        })()
+        
+        self.client.force_authenticate(user=volunteer_user)
+        url = reverse('activity-approve', kwargs={'pk': self.activity.pk})
+        response = self.client.patch(url, {
+            'approval_status': 'approved'
+        }, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class ActivityViewSetQuerysetTestCase(APITestCase):
+    """测试活动视图集的查询集过滤"""
+    
+    def setUp(self):
+        self.category = ActivityCategory.objects.create(name='测试分类')
+        self.approved_activity = Activity.objects.create(
+            title='已批准活动',
+            description='测试',
+            organizer_id=1,
+            organizer_name='Organizer 1',
+            organizer_email='org1@test.com',
+            category=self.category,
+            location='地点1',
+            start_date=timezone.now() + timedelta(days=1),
+            end_date=timezone.now() + timedelta(days=1, hours=2),
+            max_participants=10,
+            approval_status='approved'
+        )
+        self.pending_activity = Activity.objects.create(
+            title='待审批活动',
+            description='测试',
+            organizer_id=2,
+            organizer_name='Organizer 2',
+            organizer_email='org2@test.com',
+            category=self.category,
+            location='地点2',
+            start_date=timezone.now() + timedelta(days=2),
+            end_date=timezone.now() + timedelta(days=2, hours=2),
+            max_participants=10,
+            approval_status='pending'
+        )
+    
+    def test_anonymous_user_can_only_see_approved(self):
+        """测试匿名用户只能看到已批准的活动"""
+        url = reverse('activity-list')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(response.data['results'][0]['title'], '已批准活动')
+    
+    def test_volunteer_can_only_see_approved(self):
+        """测试志愿者只能看到已批准的活动"""
+        volunteer_user = type('User', (), {
+            'id': 3,
+            'username': 'volunteer',
+            'email': 'volunteer@test.com',
+            'role': 'volunteer',
+            'is_authenticated': True,
+            'is_anonymous': False,
+            'first_name': 'Volunteer',
+            'last_name': 'User',
+            'phone': ''
+        })()
+        
+        self.client.force_authenticate(user=volunteer_user)
+        url = reverse('activity-list')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(response.data['results'][0]['title'], '已批准活动')
+    
+    def test_organizer_can_see_own_and_approved(self):
+        """测试组织者可以看到自己的活动和已批准的活动"""
+        organizer_user = type('User', (), {
+            'id': 2,
+            'username': 'organizer',
+            'email': 'org2@test.com',
+            'role': 'organizer',
+            'is_authenticated': True,
+            'is_anonymous': False,
+            'first_name': 'Organizer',
+            'last_name': 'User',
+            'phone': ''
+        })()
+        
+        self.client.force_authenticate(user=organizer_user)
+        url = reverse('activity-list')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # 应该能看到自己的待审批活动和已批准的活动
+        titles = [item['title'] for item in response.data['results']]
+        self.assertIn('待审批活动', titles)
+        self.assertIn('已批准活动', titles)
+    
+    def test_admin_can_see_all(self):
+        """测试管理员可以看到所有活动"""
+        admin_user = type('User', (), {
+            'id': 8,
+            'username': 'admin',
+            'email': 'admin@test.com',
+            'role': 'admin',
+            'is_authenticated': True,
+            'is_anonymous': False,
+            'first_name': 'Admin',
+            'last_name': 'User',
+            'phone': ''
+        })()
+        
+        self.client.force_authenticate(user=admin_user)
+        url = reverse('activity-list')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 2)
+
+
+class ActivityParticipantViewSetTestCase(APITestCase):
+    """测试参与者视图集"""
+    
+    def setUp(self):
+        self.category = ActivityCategory.objects.create(name='测试分类')
+        self.activity = Activity.objects.create(
+            title='测试活动',
+            description='测试',
+            organizer_id=1,
+            organizer_name='Test Organizer',
+            organizer_email='organizer@test.com',
+            category=self.category,
+            location='测试地点',
+            start_date=timezone.now() + timedelta(days=1),
+            end_date=timezone.now() + timedelta(days=1, hours=2),
+            max_participants=10,
+            approval_status='approved'
+        )
+        self.volunteer_user = type('User', (), {
+            'id': 2,
+            'username': 'volunteer',
+            'email': 'volunteer@test.com',
+            'role': 'volunteer',
+            'is_authenticated': True,
+            'is_anonymous': False,
+            'first_name': 'Volunteer',
+            'last_name': 'User',
+            'phone': '1234567890'
+        })()
+        self.organizer_user = type('User', (), {
+            'id': 1,
+            'username': 'organizer',
+            'email': 'organizer@test.com',
+            'role': 'organizer',
+            'is_authenticated': True,
+            'is_anonymous': False,
+            'first_name': 'Organizer',
+            'last_name': 'User',
+            'phone': '0987654321'
+        })()
+    
+    @unittest.mock.patch('requests.post')
+    def test_create_participant_application(self, mock_post):
+        """测试创建参与者申请"""
+        mock_post.return_value.status_code = 201
+        
+        self.client.force_authenticate(user=self.volunteer_user)
+        url = reverse('participant-list')
+        response = self.client.post(url, {
+            'activity': self.activity.id,
+            'application_message': '我想参加这个活动',
+            'experience_level': 'beginner'
+        }, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(ActivityParticipant.objects.count(), 1)
+        participant = ActivityParticipant.objects.first()
+        self.assertEqual(participant.user_id, 2)
+        self.assertEqual(participant.activity_id, self.activity.id)
+        self.assertEqual(participant.status, 'applied')
+    
+    @unittest.mock.patch('requests.post')
+    def test_create_duplicate_application(self, mock_post):
+        """测试重复申请活动"""
+        mock_post.return_value.status_code = 201
+        
+        # 创建第一个申请
+        ActivityParticipant.objects.create(
+            activity=self.activity,
+            user_id=2,
+            user_name='Volunteer User',
+            user_email='volunteer@test.com',
+            status='applied'
+        )
+        
+        self.client.force_authenticate(user=self.volunteer_user)
+        url = reverse('participant-list')
+        response = self.client.post(url, {
+            'activity': self.activity.id,
+            'application_message': '我想再次申请'
+        }, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertIn('already applied', response.data['error'])
+    
+    @unittest.mock.patch('requests.post')
+    def test_update_participant_status_as_organizer(self, mock_post):
+        """测试组织者更新参与者状态"""
+        mock_post.return_value.status_code = 201
+        
+        participant = ActivityParticipant.objects.create(
+            activity=self.activity,
+            user_id=2,
+            user_name='Volunteer User',
+            user_email='volunteer@test.com',
+            status='applied'
+        )
+        
+        self.client.force_authenticate(user=self.organizer_user)
+        url = reverse('participant-detail', kwargs={'pk': participant.pk})
+        response = self.client.patch(url, {
+            'status': 'approved'
+        }, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        participant.refresh_from_db()
+        self.assertEqual(participant.status, 'approved')
+    
+    def test_update_participant_status_as_volunteer(self):
+        """测试志愿者无法更新参与者状态"""
+        participant = ActivityParticipant.objects.create(
+            activity=self.activity,
+            user_id=2,
+            user_name='Volunteer User',
+            user_email='volunteer@test.com',
+            status='applied'
+        )
+        
+        self.client.force_authenticate(user=self.volunteer_user)
+        url = reverse('participant-detail', kwargs={'pk': participant.pk})
+        response = self.client.patch(url, {
+            'status': 'approved'
+        }, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+    
+    def test_list_participants(self):
+        """测试列出参与者"""
+        ActivityParticipant.objects.create(
+            activity=self.activity,
+            user_id=2,
+            user_name='Volunteer 1',
+            user_email='volunteer1@test.com',
+            status='approved'
+        )
+        ActivityParticipant.objects.create(
+            activity=self.activity,
+            user_id=3,
+            user_name='Volunteer 2',
+            user_email='volunteer2@test.com',
+            status='applied'
+        )
+        
+        self.client.force_authenticate(user=self.volunteer_user)
+        url = reverse('participant-list')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 2)
+
+
+class ActivitySerializerTestCase(APITestCase):
+    """测试活动序列化器"""
+    
+    def setUp(self):
+        self.category = ActivityCategory.objects.create(name='测试分类')
+        self.activity = Activity.objects.create(
+            title='测试活动',
+            description='测试描述',
+            organizer_id=1,
+            organizer_name='Test Organizer',
+            organizer_email='organizer@test.com',
+            category=self.category,
+            location='测试地点',
+            start_date=timezone.now() + timedelta(days=1),
+            end_date=timezone.now() + timedelta(days=1, hours=2),
+            max_participants=10,
+            images=['/media/activity1.jpg', '/media/activity2.jpg']
+        )
+    
+    def test_activity_serializer_with_request(self):
+        """测试序列化器在有request上下文时生成完整URL"""
+        from .serializers import ActivitySerializer
+        from unittest.mock import Mock
+        
+        request = Mock()
+        request.build_absolute_uri = lambda path: f'http://testserver{path}'
+        
+        serializer = ActivitySerializer(self.activity, context={'request': request})
+        images = serializer.get_images(self.activity)
+        
+        self.assertEqual(len(images), 2)
+        self.assertTrue(images[0].startswith('http://testserver'))
+        self.assertTrue(images[1].startswith('http://testserver'))
+    
+    def test_activity_serializer_without_request(self):
+        """测试序列化器在没有request上下文时使用默认URL"""
+        from .serializers import ActivitySerializer
+        
+        serializer = ActivitySerializer(self.activity)
+        images = serializer.get_images(self.activity)
+        
+        self.assertEqual(len(images), 2)
+        self.assertTrue(images[0].startswith('http://activity-service:8000'))
+    
+    def test_activity_serializer_empty_images(self):
+        """测试序列化器处理空图片列表"""
+        from .serializers import ActivitySerializer
+        
+        self.activity.images = []
+        serializer = ActivitySerializer(self.activity)
+        images = serializer.get_images(self.activity)
+        
+        self.assertEqual(images, [])
+
+
+class ActivityStatusUpdateSerializerTestCase(APITestCase):
+    """测试活动状态更新序列化器"""
+    
+    def setUp(self):
+        self.category = ActivityCategory.objects.create(name='测试分类')
+        self.activity = Activity.objects.create(
+            title='测试活动',
+            description='测试',
+            organizer_id=1,
+            organizer_name='Test Organizer',
+            organizer_email='organizer@test.com',
+            category=self.category,
+            location='测试地点',
+            start_date=timezone.now() + timedelta(days=1),
+            end_date=timezone.now() + timedelta(days=1, hours=2),
+            max_participants=10
+        )
+    
+    def test_validate_status_allowed(self):
+        """测试允许的状态值"""
+        from .serializers import ActivityStatusUpdateSerializer
+        
+        serializer = ActivityStatusUpdateSerializer()
+        # 应该不抛出异常
+        serializer.validate_status('cancelled')
+        serializer.validate_status('waitlist')
+    
+    def test_validate_status_not_allowed(self):
+        """测试不允许的状态值"""
+        from .serializers import ActivityStatusUpdateSerializer
+        from rest_framework.exceptions import ValidationError
+        
+        serializer = ActivityStatusUpdateSerializer()
+        
+        with self.assertRaises(ValidationError):
+            serializer.validate_status('approved')
+        
+        with self.assertRaises(ValidationError):
+            serializer.validate_status('published')
+
+
+class AdminActivityApprovalViewSetTestCase(APITestCase):
+    """测试管理员活动审批视图集"""
+    
+    def setUp(self):
+        self.category = ActivityCategory.objects.create(name='测试分类')
+        self.activity = Activity.objects.create(
+            title='待审批活动',
+            description='测试',
+            organizer_id=1,
+            organizer_name='Test Organizer',
+            organizer_email='organizer@test.com',
+            category=self.category,
+            location='测试地点',
+            start_date=timezone.now() + timedelta(days=1),
+            end_date=timezone.now() + timedelta(days=1, hours=2),
+            max_participants=10,
+            approval_status='pending'
+        )
+        self.admin_user = type('User', (), {
+            'id': 8,
+            'username': 'admin',
+            'email': 'admin@test.com',
+            'role': 'admin',
+            'is_authenticated': True,
+            'is_anonymous': False,
+            'first_name': 'Admin',
+            'last_name': 'User',
+            'phone': ''
+        })()
+        self.volunteer_user = type('User', (), {
+            'id': 2,
+            'username': 'volunteer',
+            'email': 'volunteer@test.com',
+            'role': 'volunteer',
+            'is_authenticated': True,
+            'is_anonymous': False,
+            'first_name': 'Volunteer',
+            'last_name': 'User',
+            'phone': ''
+        })()
+    
+    @unittest.mock.patch('requests.post')
+    def test_admin_update_activity_approval(self, mock_post):
+        """测试管理员更新活动审批状态"""
+        mock_post.return_value.status_code = 201
+        
+        self.client.force_authenticate(user=self.admin_user)
+        url = reverse('admin-activity-detail', kwargs={'pk': self.activity.pk})
+        response = self.client.patch(url, {
+            'approval_status': 'approved',
+            'admin_notes': '审批通过'
+        }, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.activity.refresh_from_db()
+        self.assertEqual(self.activity.approval_status, 'approved')
+        self.assertEqual(self.activity.status, 'approved')
+    
+    def test_non_admin_cannot_update_approval(self):
+        """测试非管理员无法更新审批状态"""
+        self.client.force_authenticate(user=self.volunteer_user)
+        url = reverse('admin-activity-approval-detail', kwargs={'pk': self.activity.pk})
+        response = self.client.patch(url, {
+            'approval_status': 'approved'
+        }, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class ActivityCreateSerializerTestCase(APITestCase):
+    """测试活动创建序列化器"""
+    
+    def setUp(self):
+        self.category = ActivityCategory.objects.create(name='测试分类')
+        self.organizer_user = type('User', (), {
+            'id': 1,
+            'username': 'organizer',
+            'email': 'organizer@test.com',
+            'role': 'organizer',
+            'is_authenticated': True,
+            'is_anonymous': False,
+            'first_name': 'Organizer',
+            'last_name': 'User',
+            'phone': '1234567890'
+        })()
+    
+    @unittest.mock.patch('requests.post')
+    @unittest.mock.patch('django.core.files.storage.default_storage.save')
+    def test_create_activity_with_images(self, mock_save, mock_post):
+        """测试创建活动时上传图片"""
+        mock_save.return_value = '/media/activities/activity_1_0_image.jpg'
+        mock_post.return_value.status_code = 201
+        
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from .serializers import ActivityCreateSerializer
+        from unittest.mock import Mock
+        
+        image = SimpleUploadedFile("test.jpg", b"file_content", content_type="image/jpeg")
+        
+        request = Mock()
+        request.user = self.organizer_user
+        
+        serializer = ActivityCreateSerializer(data={
+            'title': '新活动',
+            'description': '活动描述',
+            'category': self.category.id,
+            'location': '测试地点',
+            'start_date': (timezone.now() + timedelta(days=1)).isoformat(),
+            'end_date': (timezone.now() + timedelta(days=1, hours=2)).isoformat(),
+            'max_participants': 10,
+            'images': [image]
+        }, context={'request': request})
+        
+        self.assertTrue(serializer.is_valid())
+        activity = serializer.save()
+        
+        self.assertEqual(activity.title, '新活动')
+        self.assertEqual(activity.organizer_id, 1)
+        self.assertEqual(activity.status, 'pending_approval')
+        self.assertEqual(activity.approval_status, 'pending')
+    
+    def test_create_activity_without_authentication(self):
+        """测试未认证用户无法创建活动"""
+        from .serializers import ActivityCreateSerializer
+        from rest_framework.exceptions import ValidationError
+        
+        serializer = ActivityCreateSerializer(data={
+            'title': '新活动',
+            'description': '活动描述',
+            'category': self.category.id,
+            'location': '测试地点',
+            'start_date': (timezone.now() + timedelta(days=1)).isoformat(),
+            'end_date': (timezone.now() + timedelta(days=1, hours=2)).isoformat(),
+            'max_participants': 10
+        }, context={'request': None})
+        
+        with self.assertRaises(ValidationError):
+            serializer.is_valid(raise_exception=True)
