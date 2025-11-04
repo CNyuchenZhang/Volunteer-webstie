@@ -84,7 +84,36 @@
 - 覆盖率：`coverage-*.xml`
 - 集成/E2E：`newman-report.html`、`frontend/playwright-report/`
 - 安全扫描：`*.sarif`
-- 下载（CLI）：`gh run download <run-id> -n integration_artifacts`
+
+### 📸 如何查看 Playwright 截图和视频
+
+**在 GitHub Actions 中查看：**
+1. 进入仓库 → **Actions** → 选择对应的 Workflow Run
+2. 在页面右侧或底部找到 **Artifacts** 区域
+3. 下载 `integration_artifacts` 构件
+4. 解压后，进入 `frontend/playwright-report/` 目录：
+   - **HTML 报告**：打开 `index.html`（在浏览器中可查看所有测试结果、截图和视频）
+   - **截图**：位于 `test-results/` 目录（仅在测试失败时生成）
+   - **视频**：位于 `test-results/` 目录（仅在测试失败时生成）
+
+**使用 GitHub CLI 下载：**
+```bash
+# 下载 integration_artifacts
+gh run download <run-id> -n integration_artifacts
+
+# 解压后查看
+cd frontend/playwright-report
+# 打开 index.html 在浏览器中查看
+```
+
+**本地查看（如果本地运行了测试）：**
+```bash
+cd frontend
+npx playwright show-report playwright-report
+# 或直接打开 playwright-report/index.html
+```
+
+**注意：** 根据配置（`screenshot: 'only-on-failure'` 和 `video: 'retain-on-failure'`），截图和视频只在测试失败时生成。如需每次测试都生成，可修改 `frontend/playwright.config.ts`。
 
 ## 🧪 本地复现（可选）
 ```bash

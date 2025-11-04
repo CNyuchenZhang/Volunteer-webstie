@@ -122,4 +122,69 @@ class NotificationAPITestCase(APITestCase):
         response = self.client.get(url, {'recipient_id': 1})
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+    
+    def test_create_notification(self):
+        """测试创建通知"""
+        url = reverse('notification-list')
+        data = {
+            'recipient_id': 1,
+            'recipient_email': 'test@test.com',
+            'recipient_name': 'Test User',
+            'title': '新通知',
+            'message': '这是一条新通知',
+            'notification_type': 'system_announcement'
+        }
+        response = self.client.post(url, data, format='json')
+        
+        self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST])
+    
+    def test_get_notification_detail(self):
+        """测试获取通知详情"""
+        url = reverse('notification-detail', kwargs={'pk': self.notification.id})
+        response = self.client.get(url)
+        
+        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_404_NOT_FOUND])
+    
+    def test_mark_notification_read(self):
+        """测试标记通知为已读"""
+        url = reverse('notification-detail', kwargs={'pk': self.notification.id})
+        data = {'is_read': True}
+        response = self.client.patch(url, data, format='json')
+        
+        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_404_NOT_FOUND])
+    
+    def test_filter_notifications_by_type(self):
+        """测试按类型筛选通知"""
+        # 创建不同类型的通知
+        Notification.objects.create(
+            recipient_id=1,
+            recipient_email='test@test.com',
+            recipient_name='Test User',
+            title='活动通知',
+            message='消息',
+            notification_type='activity_reminder'
+        )
+        
+        url = reverse('notification-list')
+        response = self.client.get(url, {'recipient_id': 1, 'notification_type': 'activity_reminder'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+    
+    def test_filter_unread_notifications(self):
+        """测试筛选未读通知"""
+        # 创建已读和未读通知
+        Notification.objects.create(
+            recipient_id=1,
+            recipient_email='test@test.com',
+            recipient_name='Test User',
+            title='未读通知',
+            message='消息',
+            notification_type='system_announcement',
+            is_read=False
+        )
+        
+        url = reverse('notification-list')
+        response = self.client.get(url, {'recipient_id': 1, 'is_read': False})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 

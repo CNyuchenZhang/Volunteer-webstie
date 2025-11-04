@@ -279,4 +279,437 @@ class UserModelTestCase(TestCase):
         )
         
         self.assertEqual(str(user), 'Test User (test@test.com)')
+    
+    def test_get_volunteer_level(self):
+        """测试志愿者等级计算"""
+        user = User.objects.create_user(
+            username='testuser',
+            email='test@test.com',
+            password='testpass123',
+            first_name='Test',
+            last_name='User',
+            role='volunteer'
+        )
+        
+        # 测试不同等级
+        user.total_volunteer_hours = 5
+        self.assertEqual(user.get_volunteer_level(), 'New')
+        
+        user.total_volunteer_hours = 15
+        self.assertEqual(user.get_volunteer_level(), 'Beginner')
+        
+        user.total_volunteer_hours = 75
+        self.assertEqual(user.get_volunteer_level(), 'Intermediate')
+        
+        user.total_volunteer_hours = 250
+        self.assertEqual(user.get_volunteer_level(), 'Advanced')
+        
+        user.total_volunteer_hours = 600
+        self.assertEqual(user.get_volunteer_level(), 'Expert')
+    
+    def test_update_impact_score(self):
+        """测试影响力分数计算"""
+        user = User.objects.create_user(
+            username='testuser',
+            email='test@test.com',
+            password='testpass123',
+            first_name='Test',
+            last_name='User',
+            role='volunteer'
+        )
+        
+        user.total_volunteer_hours = 50
+        user.skills = ['Python', 'Django']
+        user.languages = ['English', 'Chinese']
+        user.interests = ['Environment', 'Education']
+        user.update_impact_score()
+        
+        # 验证分数计算
+        self.assertGreater(user.impact_score, 0)
+        self.assertLessEqual(user.impact_score, 1000)
+
+
+class UserLogoutTestCase(APITestCase):
+    """测试用户登出功能"""
+    
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@test.com',
+            password='testpass123',
+            first_name='Test',
+            last_name='User',
+            role='volunteer'
+        )
+        self.token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token.key)
+    
+    def test_logout_success(self):
+        """测试登出成功"""
+        url = reverse('user-logout')
+        response = self.client.post(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # 验证token被删除
+        self.assertFalse(Token.objects.filter(user=self.user).exists())
+
+
+class PasswordChangeTestCase(APITestCase):
+    """测试密码修改功能"""
+    
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@test.com',
+            password='oldpass123',
+            first_name='Test',
+            last_name='User',
+            role='volunteer'
+        )
+        self.user.set_password('oldpass123')
+        self.user.save()
+        self.token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token.key)
+    
+    def test_change_password_success(self):
+        """测试密码修改成功"""
+        url = reverse('password-change')
+        data = {
+            'old_password': 'oldpass123',
+            'new_password': 'newpass123',
+            'new_password_confirm': 'newpass123'
+        }
+        response = self.client.post(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # 验证新密码有效
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('newpass123'))
+    
+    def test_change_password_wrong_old_password(self):
+        """测试旧密码错误"""
+        url = reverse('password-change')
+        data = {
+            'old_password': 'wrongpass',
+            'new_password': 'newpass123',
+            'new_password_confirm': 'newpass123'
+        }
+        response = self.client.post(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+    
+    def test_change_password_mismatch(self):
+        """测试新密码确认不匹配"""
+        url = reverse('password-change')
+        data = {
+            'old_password': 'oldpass123',
+            'new_password': 'newpass123',
+            'new_password_confirm': 'differentpass'
+        }
+        response = self.client.post(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class UserAvatarTestCase(APITestCase):
+    """测试头像上传和删除功能"""
+    
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@test.com',
+            password='testpass123',
+            first_name='Test',
+            last_name='User',
+            role='volunteer'
+        )
+        self.token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token.key)
+    
+    def test_upload_avatar_no_file(self):
+        """测试上传头像但没有文件"""
+        url = reverse('upload-avatar')
+        response = self.client.post(url, {})
+        
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+    
+    def test_remove_avatar_success(self):
+        """测试删除头像成功"""
+        url = reverse('remove-avatar')
+        response = self.client.delete(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('message', response.data)
+
+
+class UserStatsTestCase(APITestCase):
+    """测试用户统计功能"""
+    
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@test.com',
+            password='testpass123',
+            first_name='Test',
+            last_name='User',
+            role='volunteer'
+        )
+        self.token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token.key)
+    
+    def test_get_user_stats(self):
+        """测试获取用户统计"""
+        url = reverse('user-stats')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('total_hours', response.data)
+        self.assertIn('activities_joined', response.data)
+        self.assertIn('achievements_earned', response.data)
+        self.assertIn('impact_score', response.data)
+        self.assertIn('volunteer_level', response.data)
+    
+    def test_user_stats_requires_authentication(self):
+        """测试统计需要认证"""
+        self.client.credentials()
+        url = reverse('user-stats')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class UserAchievementsTestCase(APITestCase):
+    """测试用户成就功能"""
+    
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@test.com',
+            password='testpass123',
+            first_name='Test',
+            last_name='User',
+            role='volunteer'
+        )
+        self.token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token.key)
+    
+    def test_list_achievements(self):
+        """测试列出用户成就"""
+        from .models import UserAchievement
+        
+        # 创建测试成就
+        UserAchievement.objects.create(
+            user=self.user,
+            achievement_type='first_activity',
+            title='First Activity',
+            description='Completed first activity'
+        )
+        
+        url = reverse('user-achievements')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+
+class UserActivitiesTestCase(APITestCase):
+    """测试用户活动列表功能"""
+    
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@test.com',
+            password='testpass123',
+            first_name='Test',
+            last_name='User',
+            role='volunteer'
+        )
+        self.token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token.key)
+    
+    def test_list_user_activities(self):
+        """测试列出用户活动"""
+        from .models import UserActivity
+        
+        # 创建测试活动记录
+        UserActivity.objects.create(
+            user=self.user,
+            activity_id=1,
+            status='registered'
+        )
+        
+        url = reverse('user-activities')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+
+class UserNotificationsTestCase(APITestCase):
+    """测试用户通知功能"""
+    
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@test.com',
+            password='testpass123',
+            first_name='Test',
+            last_name='User',
+            role='volunteer'
+        )
+        self.token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token.key)
+    
+    def test_list_notifications(self):
+        """测试列出用户通知"""
+        from .models import UserNotification
+        
+        # 创建测试通知
+        UserNotification.objects.create(
+            user=self.user,
+            notification_type='system',
+            title='Test Notification',
+            message='Test message'
+        )
+        
+        url = reverse('user-notifications')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('unread_count', response.data)
+        self.assertIn('notifications', response.data)
+    
+    def test_mark_notification_read(self):
+        """测试标记通知为已读"""
+        from .models import UserNotification
+        
+        notification = UserNotification.objects.create(
+            user=self.user,
+            notification_type='system',
+            title='Test Notification',
+            message='Test message'
+        )
+        
+        url = reverse('mark-notification-read', kwargs={'notification_id': notification.id})
+        response = self.client.post(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        notification.refresh_from_db()
+        self.assertTrue(notification.is_read)
+    
+    def test_mark_all_notifications_read(self):
+        """测试标记所有通知为已读"""
+        from .models import UserNotification
+        
+        # 创建多个未读通知
+        UserNotification.objects.create(
+            user=self.user,
+            notification_type='system',
+            title='Notification 1',
+            message='Message 1'
+        )
+        UserNotification.objects.create(
+            user=self.user,
+            notification_type='system',
+            title='Notification 2',
+            message='Message 2'
+        )
+        
+        url = reverse('mark-all-notifications-read')
+        response = self.client.post(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # 验证所有通知已读
+        unread_count = UserNotification.objects.filter(user=self.user, is_read=False).count()
+        self.assertEqual(unread_count, 0)
+    
+    def test_mark_notification_read_not_found(self):
+        """测试标记不存在的通知"""
+        url = reverse('mark-notification-read', kwargs={'notification_id': 99999})
+        response = self.client.post(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
+class GlobalStatsTestCase(APITestCase):
+    """测试全局统计功能"""
+    
+    def setUp(self):
+        self.client = APIClient()
+    
+    def test_get_global_stats(self):
+        """测试获取全局统计（公开访问）"""
+        # 创建一些测试用户
+        User.objects.create_user(
+            username='volunteer1',
+            email='vol1@test.com',
+            password='testpass123',
+            role='volunteer'
+        )
+        User.objects.create_user(
+            username='organizer1',
+            email='org1@test.com',
+            password='testpass123',
+            role='organizer'
+        )
+        
+        url = reverse('global-stats')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('total_volunteers', response.data)
+        self.assertIn('total_ngos', response.data)
+
+
+class SearchUsersTestCase(APITestCase):
+    """测试搜索用户功能"""
+    
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@test.com',
+            password='testpass123',
+            first_name='Test',
+            last_name='User',
+            role='volunteer'
+        )
+        self.token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token.key)
+    
+    def test_search_users(self):
+        """测试搜索用户"""
+        # 创建测试用户
+        User.objects.create_user(
+            username='john',
+            email='john@test.com',
+            password='testpass123',
+            first_name='John',
+            last_name='Doe',
+            role='volunteer'
+        )
+        
+        url = reverse('search-users')
+        response = self.client.get(url, {'q': 'john'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+
+class HealthCheckTestCase(APITestCase):
+    """测试健康检查功能"""
+    
+    def setUp(self):
+        self.client = APIClient()
+    
+    def test_health_check(self):
+        """测试健康检查"""
+        url = reverse('health')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
