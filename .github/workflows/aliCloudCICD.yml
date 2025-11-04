@@ -99,10 +99,7 @@ jobs:
       - name: Install frontend dependencies
         run: |
           cd frontend
-          # 清理 node_modules 并重新安装依赖以解决 rollup 可选依赖问题
-          # 保留 package-lock.json 以利用 npm 缓存
-          rm -rf node_modules
-          npm install --legacy-peer-deps || npm install
+          npm ci || npm install
 
       - name: Run user service tests (with coverage)
         run: |
@@ -171,8 +168,6 @@ jobs:
       - name: Run frontend build test
         run: |
           cd frontend
-          # 确保 rollup 可选依赖已正确安装
-          npm install --legacy-peer-deps || npm install
           npm run build
           echo "✅ Frontend build successful"
 
@@ -200,10 +195,7 @@ jobs:
       - name: Install Newman and Playwright
         run: |
           sudo npm -g i newman
-          cd frontend
-          rm -rf node_modules
-          npm install --legacy-peer-deps || npm install
-          cd ..
+          npm ci --prefix frontend || npm install --prefix frontend
           npx playwright install --with-deps
 
       - name: Run Postman collection (API integration)
