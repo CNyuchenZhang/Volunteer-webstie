@@ -70,12 +70,23 @@ window.location = { href: '' } as any;
 
 describe('API Services', () => {
   beforeEach(() => {
+    // 清理所有 mock
     vi.clearAllMocks();
     localStorageMock.getItem.mockReturnValue('test-token');
+    
+    // 重置 mock store 中的方法
+    const mockStore = getMockStore();
+    if (mockStore) {
+      ['get', 'post', 'put', 'patch', 'delete'].forEach(method => {
+        mockStore.instanceMethods[method].mockClear();
+        mockStore.defaultMethods[method].mockClear();
+      });
+    }
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    // 只清理 mock，不恢复（避免影响全局 mock）
+    vi.clearAllMocks();
   });
 
   describe('userAPI', () => {

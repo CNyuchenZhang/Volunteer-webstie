@@ -345,6 +345,8 @@ jobs:
           cd frontend
           npm run test:unit:coverage || npm run test:unit || true
         continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
 
       - name: Run user service tests (with coverage)
         run: |

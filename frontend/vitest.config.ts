@@ -18,6 +18,18 @@ export default defineConfig({
       'build/',
       'tests/**', // 排除 Playwright E2E 测试
     ],
+    // 优化内存使用
+    pool: 'threads',
+    poolOptions: {
+      threads: {
+        singleThread: false,
+        minThreads: 1,
+        maxThreads: 2, // 限制并发线程数，减少内存占用
+      },
+    },
+    // 减少内存占用
+    testTimeout: 10000,
+    hookTimeout: 10000,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html', 'lcov'],

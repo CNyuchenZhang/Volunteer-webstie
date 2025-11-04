@@ -10,7 +10,7 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "type-check": "tsc --noEmit",
     "test": "playwright test",
-    "test:unit": "vitest run",
+    "test:unit": "vitest run --no-coverage",
     "test:unit:watch": "vitest",
     "test:unit:coverage": "vitest run --coverage"
   },
