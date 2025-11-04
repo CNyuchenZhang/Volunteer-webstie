@@ -12,7 +12,7 @@
     "test": "playwright test",
     "test:unit": "vitest run --no-coverage",
     "test:unit:watch": "vitest",
-    "test:unit:coverage": "vitest run --coverage"
+    "test:unit:coverage": "vitest run --coverage --reporter=verbose"
   },
   "dependencies": {
     "react": "^18.2.0",

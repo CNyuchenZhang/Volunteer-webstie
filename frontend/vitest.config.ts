@@ -24,7 +24,8 @@ export default defineConfig({
       threads: {
         singleThread: false,
         minThreads: 1,
-        maxThreads: 2, // 限制并发线程数，减少内存占用
+        maxThreads: 1, // 在 CI 环境中使用单线程减少内存占用
+        isolate: true, // 隔离每个测试文件，避免内存泄漏累积
       },
     },
     // 减少内存占用
@@ -41,11 +42,15 @@ export default defineConfig({
         '**/mockData/**',
         '**/*.spec.ts',
         '**/*.spec.tsx',
+        '**/*.test.ts',
+        '**/*.test.tsx',
         'tests/**',
         'dist/',
         'build/',
       ],
       include: ['src/**/*.{ts,tsx}'],
+      // 优化内存使用
+      all: false, // 只收集被测试代码的覆盖率，不收集所有文件的覆盖率
     },
   },
   resolve: {

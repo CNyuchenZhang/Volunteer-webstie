@@ -2,6 +2,8 @@
 
 本文档详细说明了志愿者平台项目中所有测试的功能和测试内容。
 
+---
+
 ## 测试概览
 
 本项目采用多层次的测试策略，确保代码质量和系统稳定性：
@@ -776,24 +778,100 @@ jmeter -n -t tests/perf/jmeter_test.jmx -l jmeter.jtl -e -o jmeter-report
 
 ## 测试报告
 
+所有测试报告会在 CI/CD 运行后上传为 GitHub Actions Artifacts，可在 Actions 页面下载查看。
+
 ### 单元测试报告
-- **后端**: XML 格式覆盖率报告，HTML 详细报告
-- **前端**: JSON、HTML、LCOV 格式覆盖率报告
+
+**GitHub Actions Artifact 名称**: `coverage_reports`
+
+- **后端**: 
+  - XML 格式覆盖率报告：`coverage-user.xml`, `coverage-activity.xml`, `coverage-notification.xml`
+  - HTML 详细报告：`coverage-user-html/`, `coverage-activity-html/`, `coverage-notification-html/`
+- **前端**: 
+  - JSON、HTML、LCOV 格式覆盖率报告：`frontend/coverage/`
+- **汇总报告**: 
+  - `coverage-summary.html` - 所有服务的覆盖率汇总报告
 
 ### 集成测试报告
-- **Postman**: HTML 格式测试报告
-- **Playwright**: HTML 格式测试报告，包含截图和视频
+
+**GitHub Actions Artifact 名称**: `integration_artifacts`
+
+- **Postman**: HTML 格式测试报告 - `newman-report.html`
+- **Playwright**: HTML 格式测试报告，包含截图和视频 - `frontend/playwright-report/`
 
 ### 性能测试报告
-- **k6**: JSON 和 HTML 格式报告
-- **JMeter**: JTL 和 HTML 格式报告
+
+**GitHub Actions Artifact 名称**: 
+- `perf_results_k6` - k6 性能测试结果
+- `perf_results_jmeter` - JMeter 性能测试结果
+
+#### k6 性能测试报告 (`perf_results_k6`)
+- **JSON 格式**: `k6-results.json`, `k6-summary.json`
+- **HTML 格式**: `k6-summary.html` - 性能测试汇总报告
+
+#### JMeter 性能测试报告 (`perf_results_jmeter`)
+- **JTL 格式**: `jmeter.jtl` - 原始测试数据
+- **HTML 格式**: 
+  - `jmeter-summary.html` - 性能测试汇总报告
+  - `jmeter-report/` - 详细 HTML 报告目录
 
 ### 安全扫描报告
-- **SAST**: SARIF 和 HTML 格式报告
-- **DAST**: HTML、JSON、Markdown 格式报告
-- **容器扫描**: JSON 和 HTML 格式报告
 
-所有报告会在 CI/CD 运行后上传为 GitHub Actions Artifacts，可在 Actions 页面下载查看。
+#### SAST 安全扫描报告
+
+**GitHub Actions Artifact 名称**: `sast_reports`
+
+- **SARIF 格式**: 
+  - `gitleaks.sarif` - Gitleaks 密钥泄露检测
+  - `bandit.sarif` - Bandit Python 安全扫描
+  - `semgrep.sarif` - Semgrep 通用代码安全扫描
+  - `pip-audit-user.sarif` - User Service 依赖漏洞
+  - `pip-audit-activity.sarif` - Activity Service 依赖漏洞
+  - `pip-audit-notification.sarif` - Notification Service 依赖漏洞
+- **HTML 格式**: 
+  - `gitleaks.html`, `bandit.html`, `semgrep.html`, `pip-audit-*.html` - 各工具详细报告
+  - `sast-summary.html` - SAST 扫描汇总报告
+
+#### DAST 安全扫描报告
+
+**GitHub Actions Artifact 名称**: `zapReport`
+
+- **HTML 格式**: `report_html.html` - ZAP 完整 HTML 报告
+- **JSON 格式**: `report_json.json` - ZAP JSON 数据
+- **Markdown 格式**: `report_md.md` - ZAP Markdown 报告
+- **汇总报告**: `zap-summary.html` - ZAP 扫描汇总报告
+
+#### 容器和 IaC 扫描报告
+
+**GitHub Actions Artifact 名称**: `container_iac_scan_results`
+
+- **Trivy 扫描结果**:
+  - JSON 格式：`trivy-user-image.json`, `trivy-activity-image.json`, `trivy-notification-image.json`, `trivy-*-dockerfile.json`
+  - HTML 格式：`trivy-*.html` - 各镜像和 Dockerfile 的详细扫描报告
+- **Checkov 扫描结果**:
+  - 文本格式：`checkov-dockerfile.txt`, `checkov-k8s.txt` - Dockerfile 和 Kubernetes 配置扫描结果
+
+### 如何查看测试报告
+
+1. **在 GitHub Actions 页面查看**:
+   - 进入仓库的 Actions 标签页
+   - 选择对应的 workflow run
+   - 在页面底部的 Artifacts 区域下载对应的 artifact
+
+2. **使用 GitHub CLI 下载**:
+   ```bash
+   # 列出所有 artifacts
+   gh run list
+   
+   # 下载特定 artifact
+   gh run download <run-id> -n <artifact-name>
+   ```
+
+3. **报告查看方式**:
+   - **HTML 报告**: 下载后直接在浏览器中打开 `*.html` 文件
+   - **SARIF 报告**: 可以使用 VS Code 的 SARIF Viewer 扩展查看，或上传到 GitHub Code Scanning
+   - **JSON 报告**: 使用文本编辑器或 JSON 查看器查看
+   - **文本报告**: 使用文本编辑器查看
 
 ---
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vitest';
 
 // Mock axios - 完全在 factory 内部创建，通过全局对象访问
 vi.mock('axios', () => {
@@ -85,8 +85,20 @@ describe('API Services', () => {
   });
 
   afterEach(() => {
-    // 只清理 mock，不恢复（避免影响全局 mock）
+    // 清理所有 mock
     vi.clearAllMocks();
+    // 清理 localStorage mock
+    localStorageMock.getItem.mockClear();
+    localStorageMock.setItem.mockClear();
+    localStorageMock.removeItem.mockClear();
+    localStorageMock.clear.mockClear();
+  });
+
+  afterAll(() => {
+    // 清理全局 mock store
+    if ((globalThis as any).__mockAxiosStore) {
+      delete (globalThis as any).__mockAxiosStore;
+    }
   });
 
   describe('userAPI', () => {
