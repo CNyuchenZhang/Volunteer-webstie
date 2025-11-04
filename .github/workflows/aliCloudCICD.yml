@@ -235,71 +235,240 @@ jobs:
         uses: aquasecurity/trivy-action@0.20.0
         with:
           image-ref: user-service:ci
-          format: 'table'
+          format: 'json'
           exit-code: '0'
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
-          output: 'trivy-user-image.txt'
+          output: 'trivy-user-image.json'
 
       - name: Trivy image scan (activity)
         uses: aquasecurity/trivy-action@0.20.0
         with:
           image-ref: activity-service:ci
-          format: 'table'
+          format: 'json'
           exit-code: '0'
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
-          output: 'trivy-activity-image.txt'
+          output: 'trivy-activity-image.json'
 
       - name: Trivy image scan (notification)
         uses: aquasecurity/trivy-action@0.20.0
         with:
           image-ref: notification-service:ci
-          format: 'table'
+          format: 'json'
           exit-code: '0'
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
-          output: 'trivy-notification-image.txt'
+          output: 'trivy-notification-image.json'
 
       - name: Trivy Dockerfile scan (user-service)
         uses: aquasecurity/trivy-action@0.20.0
         with:
           scan-type: 'fs'
           scan-ref: './services/user'
-          format: 'table'
+          format: 'json'
           exit-code: '0'
           severity: 'CRITICAL,HIGH'
-          output: 'trivy-user-dockerfile.txt'
+          output: 'trivy-user-dockerfile.json'
 
       - name: Trivy Dockerfile scan (activity-service)
         uses: aquasecurity/trivy-action@0.20.0
         with:
           scan-type: 'fs'
           scan-ref: './services/activity'
-          format: 'table'
+          format: 'json'
           exit-code: '0'
           severity: 'CRITICAL,HIGH'
-          output: 'trivy-activity-dockerfile.txt'
+          output: 'trivy-activity-dockerfile.json'
 
       - name: Trivy Dockerfile scan (notification-service)
         uses: aquasecurity/trivy-action@0.20.0
         with:
           scan-type: 'fs'
           scan-ref: './services/notification'
-          format: 'table'
+          format: 'json'
           exit-code: '0'
           severity: 'CRITICAL,HIGH'
-          output: 'trivy-notification-dockerfile.txt'
+          output: 'trivy-notification-dockerfile.json'
 
       - name: Trivy Dockerfile scan (frontend)
         uses: aquasecurity/trivy-action@0.20.0
         with:
           scan-type: 'fs'
           scan-ref: './frontend'
-          format: 'table'
+          format: 'json'
           exit-code: '0'
           severity: 'CRITICAL,HIGH'
-          output: 'trivy-frontend-dockerfile.txt'
+          output: 'trivy-frontend-dockerfile.json'
+
+      - name: Generate Trivy HTML reports
+        continue-on-error: true
+        run: |
+          python3 << 'PYTHON_SCRIPT'
+          import json
+          import glob
+          import os
+          
+          for json_file in glob.glob('trivy-*.json'):
+              try:
+                  with open(json_file, 'r', encoding='utf-8') as f:
+                      data = json.load(f)
+                  
+                  html_file = json_file.replace('.json', '.html')
+                  
+                  # 统计漏洞
+                  total_vulns = 0
+                  critical_count = 0
+                  high_count = 0
+                  medium_count = 0
+                  low_count = 0
+                  
+                  vulns_list = []
+                  
+                  if 'Results' in data:
+                      for result in data.get('Results', []):
+                          if 'Vulnerabilities' in result:
+                              for vuln in result['Vulnerabilities']:
+                                  total_vulns += 1
+                                  severity = vuln.get('Severity', 'UNKNOWN')
+                                  if severity == 'CRITICAL':
+                                      critical_count += 1
+                                  elif severity == 'HIGH':
+                                      high_count += 1
+                                  elif severity == 'MEDIUM':
+                                      medium_count += 1
+                                  elif severity == 'LOW':
+                                      low_count += 1
+                                  
+                                  vulns_list.append({
+                                      'id': vuln.get('VulnerabilityID', 'N/A'),
+                                      'severity': severity,
+                                      'package': vuln.get('PkgName', 'N/A'),
+                                      'version': vuln.get('InstalledVersion', 'N/A'),
+                                      'title': vuln.get('Title', vuln.get('Description', 'N/A'))[:150],
+                                      'description': vuln.get('Description', 'N/A')
+                                  })
+                  
+                  # 生成 HTML
+                  html = f"""<!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>Trivy Scan Report - {os.path.basename(json_file)}</title>
+              <style>
+                  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+                  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #f5f7fa; padding: 20px; line-height: 1.6; }}
+                  .container {{ max-width: 1400px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; }}
+                  header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; }}
+                  h1 {{ font-size: 28px; margin-bottom: 10px; }}
+                  .subtitle {{ opacity: 0.9; }}
+                  .summary {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; padding: 20px; background: #f8f9fa; }}
+                  .stat-card {{ background: white; padding: 20px; border-radius: 6px; border-left: 4px solid #667eea; }}
+                  .stat-card.critical {{ border-left-color: #dc3545; }}
+                  .stat-card.high {{ border-left-color: #fd7e14; }}
+                  .stat-card.medium {{ border-left-color: #ffc107; }}
+                  .stat-card.low {{ border-left-color: #28a745; }}
+                  .stat-number {{ font-size: 32px; font-weight: bold; margin-bottom: 5px; }}
+                  .stat-label {{ color: #6c757d; font-size: 14px; }}
+                  .vuln-table {{ width: 100%; border-collapse: collapse; }}
+                  .vuln-table th {{ background: #495057; color: white; padding: 12px; text-align: left; font-weight: 600; }}
+                  .vuln-table td {{ padding: 12px; border-bottom: 1px solid #e9ecef; }}
+                  .vuln-table tr:hover {{ background: #f8f9fa; }}
+                  .severity-badge {{ display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; }}
+                  .severity-critical {{ background: #dc3545; color: white; }}
+                  .severity-high {{ background: #fd7e14; color: white; }}
+                  .severity-medium {{ background: #ffc107; color: #212529; }}
+                  .severity-low {{ background: #28a745; color: white; }}
+                  .vuln-id {{ font-family: 'Courier New', monospace; font-size: 13px; }}
+                  .content {{ padding: 20px; }}
+                  .no-vulns {{ text-align: center; padding: 40px; color: #28a745; font-size: 18px; }}
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <header>
+                      <h1>🔍 Trivy Security Scan Report</h1>
+                      <div class="subtitle">{os.path.basename(json_file)}</div>
+                  </header>
+                  
+                  <div class="summary">
+                      <div class="stat-card">
+                          <div class="stat-number">{total_vulns}</div>
+                          <div class="stat-label">Total Vulnerabilities</div>
+                      </div>
+                      <div class="stat-card critical">
+                          <div class="stat-number">{critical_count}</div>
+                          <div class="stat-label">Critical</div>
+                      </div>
+                      <div class="stat-card high">
+                          <div class="stat-number">{high_count}</div>
+                          <div class="stat-label">High</div>
+                      </div>
+                      <div class="stat-card medium">
+                          <div class="stat-number">{medium_count}</div>
+                          <div class="stat-label">Medium</div>
+                      </div>
+                      <div class="stat-card low">
+                          <div class="stat-number">{low_count}</div>
+                          <div class="stat-label">Low</div>
+                      </div>
+                  </div>
+                  
+                  <div class="content">
+          """
+                  
+                  if vulns_list:
+                      # 按严重性排序
+                      severity_order = {'CRITICAL': 0, 'HIGH': 1, 'MEDIUM': 2, 'LOW': 3, 'UNKNOWN': 4}
+                      vulns_list.sort(key=lambda x: (severity_order.get(x['severity'], 99), x['id']))
+                      
+                      html += """
+                      <table class="vuln-table">
+                          <thead>
+                              <tr>
+                                  <th>Vulnerability ID</th>
+                                  <th>Severity</th>
+                                  <th>Package</th>
+                                  <th>Version</th>
+                                  <th>Description</th>
+                              </tr>
+                          </thead>
+                          <tbody>
+                      """
+                      
+                      for vuln in vulns_list:
+                          severity_class = f'severity-{vuln["severity"].lower()}'
+                          html += f"""
+                              <tr>
+                                  <td class="vuln-id">{vuln['id']}</td>
+                                  <td><span class="severity-badge {severity_class}">{vuln['severity']}</span></td>
+                                  <td><strong>{vuln['package']}</strong></td>
+                                  <td>{vuln['version']}</td>
+                                  <td>{vuln['title']}</td>
+                              </tr>
+                          """
+                      
+                      html += """
+                          </tbody>
+                      </table>
+                      """
+                  else:
+                      html += '<div class="no-vulns">✅ No vulnerabilities found!</div>'
+                  
+                  html += """
+                  </div>
+              </div>
+          </body>
+          </html>
+          """
+                  
+                  with open(html_file, 'w', encoding='utf-8') as f:
+                      f.write(html)
+                  print(f"✅ Generated {html_file}")
+              except Exception as e:
+                  print(f"⚠️  Error processing {json_file}: {e}")
+          PYTHON_SCRIPT
 
       - name: Checkov scan (Dockerfiles)
         continue-on-error: true
@@ -318,7 +487,8 @@ jobs:
         with:
           name: container_iac_scan_results
           path: |
-            trivy-*.txt
+            trivy-*.json
+            trivy-*.html
             checkov-*.txt
           if-no-files-found: ignore
           retention-days: 7
@@ -363,17 +533,19 @@ jobs:
           cmd_options: '-a -m 5'
           fail_action: false
           allow_issue_writing: false
+          upload_artifact: false
 
       - name: Upload ZAP report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: zap_report
+          name: zap-report
           path: |
             report_html.html
             report_json.json
             report_md.md
           if-no-files-found: ignore
+          retention-days: 7
 
   # 性能测试（PR），使用接近生产的进程模型
   perf:
