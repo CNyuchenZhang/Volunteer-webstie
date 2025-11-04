@@ -713,3 +713,242 @@ class HealthCheckTestCase(APITestCase):
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+
+class CreateNotificationTestCase(APITestCase):
+    """测试创建通知功能（跨服务调用）"""
+    
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@test.com',
+            password='testpass123',
+            first_name='Test',
+            last_name='User',
+            role='volunteer'
+        )
+    
+    def test_create_notification_success(self):
+        """测试成功创建通知"""
+        url = reverse('create-notification')
+        data = {
+            'user_id': self.user.id,
+            'title': '测试通知',
+            'message': '这是一条测试通知',
+            'notification_type': 'system'
+        }
+        response = self.client.post(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn('title', response.data)
+    
+    def test_create_notification_with_activity_id(self):
+        """测试创建带活动ID的通知"""
+        url = reverse('create-notification')
+        data = {
+            'user_id': self.user.id,
+            'title': '活动通知',
+            'message': '您有新活动',
+            'notification_type': 'activity',
+            'activity_id': 1
+        }
+        response = self.client.post(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+    
+    def test_create_notification_missing_required_fields(self):
+        """测试缺少必填字段"""
+        url = reverse('create-notification')
+        data = {
+            'user_id': self.user.id,
+            # 缺少 title 和 message
+        }
+        response = self.client.post(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+    
+    def test_create_notification_user_not_found(self):
+        """测试用户不存在"""
+        url = reverse('create-notification')
+        data = {
+            'user_id': 99999,
+            'title': '测试通知',
+            'message': '这是一条测试通知'
+        }
+        response = self.client.post(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
+class SearchUsersExtendedTestCase(APITestCase):
+    """测试搜索用户功能（扩展场景）"""
+    
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@test.com',
+            password='testpass123',
+            first_name='Test',
+            last_name='User',
+            role='volunteer',
+            location='Beijing'
+        )
+        self.token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token.key)
+        
+        # 创建更多测试用户
+        User.objects.create_user(
+            username='john',
+            email='john@test.com',
+            password='testpass123',
+            first_name='John',
+            last_name='Doe',
+            role='volunteer',
+            location='Shanghai'
+        )
+        User.objects.create_user(
+            username='organizer1',
+            email='org1@test.com',
+            password='testpass123',
+            first_name='Organizer',
+            last_name='One',
+            role='organizer',
+            location='Beijing'
+        )
+    
+    def test_search_users_by_role(self):
+        """测试按角色搜索"""
+        url = reverse('search-users')
+        response = self.client.get(url, {'role': 'organizer'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        if response.data:
+            for user in response.data:
+                self.assertNotEqual(user.get('id'), self.user.id)  # 排除当前用户
+    
+    def test_search_users_by_location(self):
+        """测试按位置搜索"""
+        url = reverse('search-users')
+        response = self.client.get(url, {'location': 'Beijing'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+    
+    def test_search_users_combined_filters(self):
+        """测试组合过滤条件"""
+        url = reverse('search-users')
+        response = self.client.get(url, {'q': 'John', 'role': 'volunteer'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+    
+    def test_search_users_excludes_current_user(self):
+        """测试搜索排除当前用户"""
+        url = reverse('search-users')
+        response = self.client.get(url, {'q': 'test'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        if response.data:
+            user_ids = [u.get('id') for u in response.data]
+            self.assertNotIn(self.user.id, user_ids)
+
+
+class UserProfileUpdateTestCase(APITestCase):
+    """测试用户详细资料更新"""
+    
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@test.com',
+            password='testpass123',
+            first_name='Test',
+            last_name='User',
+            role='volunteer'
+        )
+        self.token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token.key)
+    
+    def test_get_user_profile(self):
+        """测试获取用户详细资料"""
+        url = reverse('user-profile-update')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+    
+    def test_update_user_profile(self):
+        """测试更新用户详细资料"""
+        url = reverse('user-profile-update')
+        data = {
+            'bio': 'Updated bio',
+            'location': 'Updated location'
+        }
+        response = self.client.patch(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+
+class UserUpdateTestCase(APITestCase):
+    """测试用户更新功能"""
+    
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@test.com',
+            password='testpass123',
+            first_name='Test',
+            last_name='User',
+            role='volunteer'
+        )
+        self.token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token.key)
+    
+    def test_update_user_basic_info(self):
+        """测试更新用户基本信息"""
+        url = reverse('user-update')
+        data = {
+            'first_name': 'Updated',
+            'last_name': 'Name'
+        }
+        response = self.client.patch(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.first_name, 'Updated')
+
+
+class UserProfileViewTestCase(APITestCase):
+    """测试用户资料视图"""
+    
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@test.com',
+            password='testpass123',
+            first_name='Test',
+            last_name='User',
+            role='volunteer'
+        )
+        self.token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token.key)
+    
+    def test_get_profile(self):
+        """测试获取用户资料"""
+        url = reverse('user-profile')
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('email', response.data)
+    
+    def test_update_profile(self):
+        """测试更新用户资料"""
+        url = reverse('user-profile')
+        data = {
+            'phone': '1234567890',
+            'bio': 'Test bio'
+        }
+        response = self.client.patch(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+

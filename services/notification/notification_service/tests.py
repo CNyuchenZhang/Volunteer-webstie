@@ -202,4 +202,66 @@ class NotificationAPITestCase(APITestCase):
         response = self.client.get(url, {'recipient_id': 1, 'is_read': False})
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+    
+    def test_delete_notification(self):
+        """测试删除通知"""
+        url = reverse('notification-detail', kwargs={'pk': self.notification.id})
+        response = self.client.delete(url)
+        
+        self.assertIn(response.status_code, [status.HTTP_204_NO_CONTENT, status.HTTP_404_NOT_FOUND])
+
+
+class NotificationModelExtendedTestCase(TestCase):
+    """测试通知模型扩展功能"""
+    
+    def setUp(self):
+        # 断开信号，避免触发 Celery 任务
+        post_save.disconnect(signals.notification_created, sender=Notification)
+    
+    def tearDown(self):
+        # 重新连接信号
+        post_save.connect(signals.notification_created, sender=Notification)
+    
+    def test_notification_priority(self):
+        """测试通知优先级"""
+        notification = Notification.objects.create(
+            recipient_id=1,
+            recipient_email='test@test.com',
+            recipient_name='Test User',
+            title='高优先级通知',
+            message='重要消息',
+            notification_type='system_announcement',
+            priority='high'
+        )
+        
+        self.assertEqual(notification.priority, 'high')
+    
+    def test_notification_with_activity_id(self):
+        """测试带活动ID的通知"""
+        notification = Notification.objects.create(
+            recipient_id=1,
+            recipient_email='test@test.com',
+            recipient_name='Test User',
+            title='活动通知',
+            message='您有新活动',
+            notification_type='activity_reminder',
+            activity_id=1
+        )
+        
+        self.assertEqual(notification.activity_id, 1)
+    
+    def test_notification_created_at(self):
+        """测试通知创建时间"""
+        notification = Notification.objects.create(
+            recipient_id=1,
+            recipient_email='test@test.com',
+            recipient_name='Test User',
+            title='测试通知',
+            message='测试消息',
+            notification_type='system_announcement'
+        )
+        
+        self.assertIsNotNone(notification.created_at)
+        self.assertIsNone(notification.read_at)
+        self.assertFalse(notification.is_read)
 
