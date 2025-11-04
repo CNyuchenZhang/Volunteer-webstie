@@ -11,6 +11,13 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
+    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    exclude: [
+      'node_modules/',
+      'dist/',
+      'build/',
+      'tests/**', // 排除 Playwright E2E 测试
+    ],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html', 'lcov'],
@@ -22,6 +29,7 @@ export default defineConfig({
         '**/mockData/**',
         '**/*.spec.ts',
         '**/*.spec.tsx',
+        'tests/**',
         'dist/',
         'build/',
       ],

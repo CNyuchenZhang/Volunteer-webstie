@@ -1,10 +1,34 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import axios from 'axios';
 import { userAPI, activityAPI, notificationAPI } from '../../services/api';
 
-// Mock axios
-vi.mock('axios');
-const mockedAxios = axios as any;
+// Mock axios - 需要在导入 api 之前 mock
+const mockAxiosInstance = {
+  get: vi.fn(),
+  post: vi.fn(),
+  put: vi.fn(),
+  patch: vi.fn(),
+  delete: vi.fn(),
+  interceptors: {
+    request: { use: vi.fn() },
+    response: { use: vi.fn() },
+  },
+};
+
+const mockAxiosDefault = {
+  create: vi.fn(() => mockAxiosInstance),
+  get: vi.fn(),
+  post: vi.fn(),
+  put: vi.fn(),
+  patch: vi.fn(),
+  delete: vi.fn(),
+};
+
+vi.mock('axios', () => {
+  return {
+    default: mockAxiosDefault,
+    __esModule: true,
+  };
+});
 
 // Mock localStorage
 const localStorageMock = {
@@ -32,20 +56,20 @@ describe('API Services', () => {
   describe('userAPI', () => {
     it('应该能够调用登录API', async () => {
       const mockResponse = { data: { token: 'test-token', user: { id: 1 } } };
-      mockedAxios.post = vi.fn().mockResolvedValue(mockResponse);
+      mockAxiosInstance.post = vi.fn().mockResolvedValue(mockResponse);
 
       const result = await userAPI.login({
         email: 'test@test.com',
         password: 'password123',
       });
 
-      expect(mockedAxios.post).toHaveBeenCalled();
+      expect(mockAxiosInstance.post).toHaveBeenCalled();
       expect(result).toEqual(mockResponse.data);
     });
 
     it('应该能够调用注册API', async () => {
       const mockResponse = { data: { user: { id: 1, username: 'testuser' } } };
-      mockedAxios.post = vi.fn().mockResolvedValue(mockResponse);
+      mockAxiosInstance.post = vi.fn().mockResolvedValue(mockResponse);
 
       const result = await userAPI.register({
         username: 'testuser',
@@ -57,17 +81,17 @@ describe('API Services', () => {
         role: 'volunteer',
       });
 
-      expect(mockedAxios.post).toHaveBeenCalled();
+      expect(mockAxiosInstance.post).toHaveBeenCalled();
       expect(result).toEqual(mockResponse.data);
     });
 
     it('应该能够调用获取用户信息API', async () => {
       const mockResponse = { data: { id: 1, username: 'testuser' } };
-      mockedAxios.get = vi.fn().mockResolvedValue(mockResponse);
+      mockAxiosInstance.get = vi.fn().mockResolvedValue(mockResponse);
 
       const result = await userAPI.getProfile();
 
-      expect(mockedAxios.get).toHaveBeenCalled();
+      expect(mockAxiosInstance.get).toHaveBeenCalled();
       expect(result).toEqual(mockResponse.data);
     });
   });
@@ -75,27 +99,27 @@ describe('API Services', () => {
   describe('activityAPI', () => {
     it('应该能够调用获取活动列表API', async () => {
       const mockResponse = { data: { results: [], count: 0 } };
-      mockedAxios.get = vi.fn().mockResolvedValue(mockResponse);
+      mockAxiosInstance.get = vi.fn().mockResolvedValue(mockResponse);
 
       const result = await activityAPI.getActivities({});
 
-      expect(mockedAxios.get).toHaveBeenCalled();
+      expect(mockAxiosInstance.get).toHaveBeenCalled();
       expect(result).toEqual(mockResponse.data);
     });
 
     it('应该能够调用获取活动详情API', async () => {
       const mockResponse = { data: { id: 1, title: 'Test Activity' } };
-      mockedAxios.get = vi.fn().mockResolvedValue(mockResponse);
+      mockAxiosInstance.get = vi.fn().mockResolvedValue(mockResponse);
 
       const result = await activityAPI.getActivity(1);
 
-      expect(mockedAxios.get).toHaveBeenCalled();
+      expect(mockAxiosInstance.get).toHaveBeenCalled();
       expect(result).toEqual(mockResponse.data);
     });
 
     it('应该能够调用创建活动API', async () => {
       const mockResponse = { data: { id: 1, title: 'New Activity' } };
-      mockedAxios.post = vi.fn().mockResolvedValue(mockResponse);
+      mockAxiosInstance.post = vi.fn().mockResolvedValue(mockResponse);
 
       const result = await activityAPI.createActivity({
         title: 'New Activity',
@@ -107,7 +131,7 @@ describe('API Services', () => {
         max_participants: 10,
       });
 
-      expect(mockedAxios.post).toHaveBeenCalled();
+      expect(mockAxiosInstance.post).toHaveBeenCalled();
       expect(result).toEqual(mockResponse.data);
     });
   });
@@ -115,21 +139,28 @@ describe('API Services', () => {
   describe('notificationAPI', () => {
     it('应该能够调用获取通知列表API', async () => {
       const mockResponse = { data: { results: [], count: 0 } };
-      mockedAxios.get = vi.fn().mockResolvedValue(mockResponse);
+      mockAxiosDefault.get = vi.fn().mockResolvedValue(mockResponse);
+      // 设置 localStorage 中的 user
+      localStorageMock.getItem = vi.fn((key: string) => {
+        if (key === 'user') {
+          return JSON.stringify({ id: 1 });
+        }
+        return null;
+      });
 
-      const result = await notificationAPI.getNotifications({});
+      const result = await notificationAPI.getNotifications();
 
-      expect(mockedAxios.get).toHaveBeenCalled();
+      expect(mockAxiosDefault.get).toHaveBeenCalled();
       expect(result).toEqual(mockResponse.data);
     });
 
     it('应该能够调用标记通知为已读API', async () => {
-      const mockResponse = { data: { id: 1, is_read: true } };
-      mockedAxios.patch = vi.fn().mockResolvedValue(mockResponse);
+      const mockResponse = { data: { id: 1, read: true } };
+      mockAxiosDefault.post = vi.fn().mockResolvedValue(mockResponse);
 
       const result = await notificationAPI.markAsRead(1);
 
-      expect(mockedAxios.patch).toHaveBeenCalled();
+      expect(mockAxiosDefault.post).toHaveBeenCalled();
       expect(result).toEqual(mockResponse.data);
     });
   });
