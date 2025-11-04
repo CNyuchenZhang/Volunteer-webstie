@@ -7,6 +7,7 @@ from django.utils import timezone
 from django.db.models.signals import post_save
 from rest_framework.test import APITestCase, APIClient
 from rest_framework import status
+from unittest.mock import patch, MagicMock
 from .models import Notification
 from . import signals
 
@@ -93,7 +94,7 @@ class NotificationModelTestCase(TestCase):
         self.assertIsNotNone(notification.sent_at)
 
 
-@override_settings(CELERY_TASK_ALWAYS_EAGER=True)
+@override_settings(CELERY_TASK_ALWAYS_EAGER=True, CELERY_TASK_EAGER_PROPAGATES=True)
 class NotificationAPITestCase(APITestCase):
     """测试通知API（简化版，不测试需要RabbitMQ的功能）"""
     
@@ -101,6 +102,16 @@ class NotificationAPITestCase(APITestCase):
         self.client = APIClient()
         # 断开信号，避免触发 Celery 任务
         post_save.disconnect(signals.notification_created, sender=Notification)
+        
+        # Mock Celery 任务，避免连接 RabbitMQ
+        # 由于序列化器在 create 方法内部动态导入，需要同时 patch tasks 和可能已经导入的模块
+        # 方法1: patch tasks 模块
+        self.task_patcher = patch('notification_service.tasks.send_notification_email')
+        self.mock_task_func = self.task_patcher.start()
+        # 方法2: 创建 mock 对象并设置 delay 方法
+        mock_task_obj = MagicMock()
+        mock_task_obj.delay = MagicMock()
+        self.mock_task_func.delay = MagicMock()
         
         # 创建测试通知
         self.notification = Notification.objects.create(
@@ -113,6 +124,9 @@ class NotificationAPITestCase(APITestCase):
         )
     
     def tearDown(self):
+        # 停止 mock
+        if hasattr(self, 'task_patcher'):
+            self.task_patcher.stop()
         # 重新连接信号
         post_save.connect(signals.notification_created, sender=Notification)
         
@@ -125,6 +139,7 @@ class NotificationAPITestCase(APITestCase):
     
     def test_create_notification(self):
         """测试创建通知"""
+        # Celery 任务已在 setUp 中被 mock
         url = reverse('notification-list')
         data = {
             'recipient_id': 1,
