@@ -84,7 +84,7 @@
 - 覆盖率：`coverage-*.xml`
 - 集成/E2E：`newman-report.html`、`frontend/playwright-report/`
 - 安全扫描：`*.sarif`
- - 下载（CLI）：`gh run download <run-id> -n integration_artifacts`
+- 下载（CLI）：`gh run download <run-id> -n integration_artifacts`
 
 ## 🧪 本地复现（可选）
 ```bash
