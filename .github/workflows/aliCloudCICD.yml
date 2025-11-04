@@ -981,6 +981,9 @@ jobs:
           fail_action: false
           allow_issue_writing: false
           upload_artifact: false
+          artifact_name: 'zap-report'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate ZAP JSON summary
         continue-on-error: true
@@ -1183,6 +1186,120 @@ jobs:
         uses: grafana/k6-action@v0.3.1
         with:
           filename: tests/perf/k6-load.js
+          output: 'k6-results.json'
+
+      - name: Generate k6 summary
+        continue-on-error: true
+        run: |
+          python3 << 'PYTHON_SCRIPT'
+          import json
+          import os
+          
+          k6_files = ['k6-results.json', 'k6-summary.json']
+          k6_data = None
+          
+          for k6_file in k6_files:
+              if os.path.exists(k6_file):
+                  try:
+                      with open(k6_file, 'r', encoding='utf-8') as f:
+                          k6_data = json.load(f)
+                      print(f"✅ Found k6 results in {k6_file}")
+                      break
+                  except Exception as e:
+                      print(f"⚠️  Error reading {k6_file}: {e}")
+          
+          if k6_data:
+              try:
+                  # 解析 k6 JSON 结果
+                  metrics = k6_data.get('metrics', {})
+                  
+                  # 提取关键指标
+                  http_reqs = metrics.get('http_reqs', {})
+                  http_req_duration = metrics.get('http_req_duration', {})
+                  http_req_failed = metrics.get('http_req_failed', {})
+                  
+                  total_requests = http_reqs.get('values', {}).get('count', 0)
+                  avg_duration = http_req_duration.get('values', {}).get('avg', 0)
+                  min_duration = http_req_duration.get('values', {}).get('min', 0)
+                  max_duration = http_req_duration.get('values', {}).get('max', 0)
+                  p95_duration = http_req_duration.get('values', {}).get('p(95)', 0)
+                  p99_duration = http_req_duration.get('values', {}).get('p(99)', 0)
+                  failed_rate = http_req_failed.get('values', {}).get('rate', 0) * 100
+                  
+                  # 生成 HTML 汇总
+                  html = f"""<!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>k6 Performance Test Summary</title>
+              <style>
+                  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+                  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #f5f7fa; padding: 20px; }}
+                  .container {{ max-width: 1400px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; }}
+                  header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; }}
+                  h1 {{ font-size: 28px; margin-bottom: 10px; }}
+                  .summary {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; padding: 20px; background: #f8f9fa; }}
+                  .stat-card {{ background: white; padding: 20px; border-radius: 6px; border-left: 4px solid #667eea; }}
+                  .stat-number {{ font-size: 32px; font-weight: bold; margin-bottom: 5px; }}
+                  .stat-label {{ color: #6c757d; font-size: 14px; }}
+                  .content {{ padding: 20px; }}
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <header>
+                      <h1>⚡ k6 Performance Test Summary</h1>
+                      <p>Total Requests: {total_requests:,}</p>
+                  </header>
+                  
+                  <div class="summary">
+                      <div class="stat-card">
+                          <div class="stat-number">{total_requests:,}</div>
+                          <div class="stat-label">Total Requests</div>
+                      </div>
+                      <div class="stat-card">
+                          <div class="stat-number">{avg_duration:.0f}ms</div>
+                          <div class="stat-label">Avg Duration</div>
+                      </div>
+                      <div class="stat-card">
+                          <div class="stat-number">{min_duration:.0f}ms</div>
+                          <div class="stat-label">Min Duration</div>
+                      </div>
+                      <div class="stat-card">
+                          <div class="stat-number">{max_duration:.0f}ms</div>
+                          <div class="stat-label">Max Duration</div>
+                      </div>
+                      <div class="stat-card">
+                          <div class="stat-number">{p95_duration:.0f}ms</div>
+                          <div class="stat-label">P95 Duration</div>
+                      </div>
+                      <div class="stat-card">
+                          <div class="stat-number">{p99_duration:.0f}ms</div>
+                          <div class="stat-label">P99 Duration</div>
+                      </div>
+                      <div class="stat-card">
+                          <div class="stat-number">{failed_rate:.2f}%</div>
+                          <div class="stat-label">Failure Rate</div>
+                      </div>
+                      <div class="stat-card">
+                          <div class="stat-number">{(100 - failed_rate):.2f}%</div>
+                          <div class="stat-label">Success Rate</div>
+                      </div>
+                  </div>
+              </div>
+          </body>
+          </html>
+          """
+                  
+                  with open('k6-summary.html', 'w', encoding='utf-8') as f:
+                      f.write(html)
+                  print("✅ Generated k6-summary.html")
+              except Exception as e:
+                  print(f"⚠️  Error processing k6 results: {e}")
+          else:
+              print("⚠️  k6 results file not found, skipping summary generation")
+          PYTHON_SCRIPT
 
       - name: Install JMeter
         run: sudo apt-get update && sudo apt-get install -y jmeter
@@ -1363,17 +1480,44 @@ jobs:
                       print("✅ Generated jmeter-summary.html")
               except Exception as e:
                   print(f"⚠️  Error processing JMeter JTL: {e}")
+          else:
+              print("⚠️  jmeter.jtl file not found, skipping summary generation")
           PYTHON_SCRIPT
 
-      - name: Upload perf artifacts
+      - name: List generated files
+        if: always()
+        run: |
+          echo "=== Checking for performance test artifacts ==="
+          echo "k6 files:"
+          ls -la k6-*.json k6-*.html 2>/dev/null || echo "No k6 files found"
+          echo ""
+          echo "JMeter files:"
+          ls -la jmeter.jtl jmeter-summary.html 2>/dev/null || echo "No JMeter files found"
+          echo ""
+          echo "JMeter report directory:"
+          ls -la jmeter-report/ 2>/dev/null || echo "No jmeter-report directory found"
+
+      - name: Upload k6 artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: perf_results
+          name: perf_results_k6
+          path: |
+            k6-results.json
+            k6-summary.json
+            k6-summary.html
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload JMeter artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf_results_jmeter
           path: |
             jmeter.jtl
-            jmeter-report
             jmeter-summary.html
+            jmeter-report/**
           if-no-files-found: ignore
           retention-days: 7
 
