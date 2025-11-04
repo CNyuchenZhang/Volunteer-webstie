@@ -107,6 +107,7 @@ jobs:
           python manage.py migrate --settings=user_service.settings.base
           coverage run --source=. manage.py test users.tests --noinput --settings=user_service.settings.base
           coverage xml -o ../../coverage-user.xml
+          coverage html -d ../../coverage-user-html
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
 
@@ -116,6 +117,7 @@ jobs:
           python manage.py migrate --settings=activity_service.settings.base
           coverage run --source=. manage.py test activities.tests --noinput --settings=activity_service.settings.base
           coverage xml -o ../../coverage-activity.xml
+          coverage html -d ../../coverage-activity-html
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
 
@@ -125,6 +127,7 @@ jobs:
           python manage.py migrate --settings=notification_service.settings
           coverage run --source=. manage.py test notification_service.tests --noinput --settings=notification_service.settings
           coverage xml -o ../../coverage-notification.xml
+          coverage html -d ../../coverage-notification-html
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
 
@@ -158,12 +161,145 @@ jobs:
               print(f"✅ Coverage meets target: {pct:.2f}%")
           PY
 
+      - name: Generate combined coverage HTML report
+        continue-on-error: true
+        run: |
+          python3 << 'PYTHON_SCRIPT'
+          import xml.etree.ElementTree as ET
+          import os
+          import json
+          
+          # 解析所有覆盖率 XML 文件
+          coverage_data = {}
+          total_covered = 0
+          total_lines = 0
+          
+          for xml_file in ['coverage-user.xml', 'coverage-activity.xml', 'coverage-notification.xml']:
+              if os.path.exists(xml_file):
+                  try:
+                      tree = ET.parse(xml_file)
+                      root = tree.getroot()
+                      service_name = xml_file.replace('coverage-', '').replace('.xml', '')
+                      
+                      covered = int(root.attrib.get('lines-covered', 0))
+                      lines = int(root.attrib.get('lines-valid', 0))
+                      
+                      coverage_data[service_name] = {
+                          'covered': covered,
+                          'total': lines,
+                          'percentage': (covered / lines * 100) if lines > 0 else 0
+                      }
+                      
+                      total_covered += covered
+                      total_lines += lines
+                  except Exception as e:
+                      print(f"Warning: Could not parse {xml_file}: {e}")
+          
+          aggregate_percentage = (total_covered / total_lines * 100) if total_lines > 0 else 0
+          
+          # 生成汇总 HTML 报告
+          html = f"""<!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>Code Coverage Report</title>
+              <style>
+                  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+                  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #f5f7fa; padding: 20px; }}
+                  .container {{ max-width: 1200px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; }}
+                  header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; }}
+                  h1 {{ font-size: 28px; margin-bottom: 10px; }}
+                  .summary {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; padding: 30px; }}
+                  .card {{ background: #f8f9fa; border-radius: 8px; padding: 20px; border-left: 4px solid #667eea; }}
+                  .card.aggregate {{ border-left-color: #28a745; background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); }}
+                  .card h3 {{ color: #333; margin-bottom: 15px; font-size: 18px; }}
+                  .percentage {{ font-size: 48px; font-weight: bold; color: #28a745; margin: 10px 0; }}
+                  .percentage.warning {{ color: #ff9800; }}
+                  .percentage.low {{ color: #f44336; }}
+                  .stats {{ display: flex; justify-content: space-between; margin-top: 10px; color: #666; }}
+                  .progress-bar {{ width: 100%; height: 30px; background: #e0e0e0; border-radius: 15px; overflow: hidden; margin-top: 10px; }}
+                  .progress-fill {{ height: 100%; background: linear-gradient(90deg, #28a745, #4caf50); transition: width 0.3s; }}
+                  .progress-fill.warning {{ background: linear-gradient(90deg, #ff9800, #ffb74d); }}
+                  .progress-fill.low {{ background: linear-gradient(90deg, #f44336, #e57373); }}
+                  .links {{ padding: 20px; background: #f8f9fa; border-top: 1px solid #e0e0e0; }}
+                  .links a {{ display: inline-block; margin: 5px 10px 5px 0; padding: 8px 16px; background: #667eea; color: white; text-decoration: none; border-radius: 4px; }}
+                  .links a:hover {{ background: #5568d3; }}
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <header>
+                      <h1>📊 Code Coverage Report</h1>
+                      <p>Aggregate Coverage: {aggregate_percentage:.2f}%</p>
+                  </header>
+                  
+                  <div class="summary">
+                      <div class="card aggregate">
+                          <h3>Overall Coverage</h3>
+                          <div class="percentage {'warning' if aggregate_percentage < 85 else ''} {'low' if aggregate_percentage < 60 else ''}">
+                              {aggregate_percentage:.2f}%
+                          </div>
+                          <div class="progress-bar">
+                              <div class="progress-fill {'warning' if aggregate_percentage < 85 else ''} {'low' if aggregate_percentage < 60 else ''}" style="width: {aggregate_percentage}%"></div>
+                          </div>
+                          <div class="stats">
+                              <span>Covered: {total_covered:,}</span>
+                              <span>Total: {total_lines:,}</span>
+                          </div>
+                      </div>
+          """
+          
+          for service, data in coverage_data.items():
+              pct = data['percentage']
+              pct_class = 'warning' if pct < 85 else ''
+              pct_class = 'low' if pct < 60 else pct_class
+              
+              html += f"""
+                      <div class="card">
+                          <h3>{service.replace('-', ' ').title()} Service</h3>
+                          <div class="percentage {pct_class}">
+                              {pct:.2f}%
+                          </div>
+                          <div class="progress-bar">
+                              <div class="progress-fill {pct_class}" style="width: {pct}%"></div>
+                          </div>
+                          <div class="stats">
+                              <span>Covered: {data['covered']:,}</span>
+                              <span>Total: {data['total']:,}</span>
+                          </div>
+                      </div>
+              """
+          
+          html += """
+                  </div>
+                  
+                  <div class="links">
+                      <h3>📁 Detailed Reports:</h3>
+                      <a href="coverage-user-html/index.html" target="_blank">User Service Details</a>
+                      <a href="coverage-activity-html/index.html" target="_blank">Activity Service Details</a>
+                      <a href="coverage-notification-html/index.html" target="_blank">Notification Service Details</a>
+                  </div>
+              </div>
+          </body>
+          </html>
+          """
+          
+          with open('coverage-summary.html', 'w', encoding='utf-8') as f:
+              f.write(html)
+          print("✅ Generated coverage-summary.html")
+          PYTHON_SCRIPT
+
       - name: Upload coverage artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: coverage_xml
+          name: coverage_reports
           path: |
             coverage-*.xml
+            coverage-*-html/
+            coverage-summary.html
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Run frontend build test
         run: |

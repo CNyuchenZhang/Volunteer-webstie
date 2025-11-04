@@ -15,11 +15,12 @@
   - 步骤：Checkout → Gitleaks → 安装 Bandit/Semgrep/pip-audit → 生成 SARIF → 上传 `sast_reports`
   - 产物：`gitleaks.sarif`、`bandit.sarif`、`semgrep.sarif`、`pip-audit-*.sarif`
   - 常见失败：规则过严/误报。当前 SAST 软失败（`|| true`），可逐步改硬失败。
+  - SARIF 查看方式：见下方 "如何查看 SARIF 文件" 章节
 
 - unit（needs: sast）
   - 环境：内置 Postgres 15、Python 3.11、Node 18
-  - 步骤：安装依赖 → 三服务 migrate+test 覆盖率 → 聚合检查（≥85%）→ 前端构建 → 上传 `coverage_xml`
-  - 产物：`coverage-user.xml`、`coverage-activity.xml`、`coverage-notification.xml`
+  - 步骤：安装依赖 → 三服务 migrate+test 覆盖率 → 生成 HTML 报告 → 聚合检查（≥85%）→ 前端构建 → 上传 `coverage_reports`
+  - 产物：`coverage-*.xml`、`coverage-*-html/`（详细 HTML 报告）、`coverage-summary.html`（汇总报告）
   - 常见失败：数据库迁移缺失、测试依赖缺失、覆盖率不足、前端构建失败
 
 - integration（needs: unit）
@@ -81,9 +82,11 @@
 可选：如镜像仓库凭据、额外扫描配置等。
 
 ## 📦 生成的构件（Artifacts）
-- 覆盖率：`coverage-*.xml`
+- 覆盖率：`coverage-*.xml`、`coverage-*-html/`（详细 HTML）、`coverage-summary.html`（汇总）
 - 集成/E2E：`newman-report.html`、`frontend/playwright-report/`
-- 安全扫描：`*.sarif`
+- 安全扫描：`*.sarif`、`container_iac_scan_results`（Trivy HTML、Checkov TXT）
+- DAST：`zap-report`（HTML、JSON、MD）
+- 性能：`perf_results`（JMeter 报告）
 
 ### 📸 如何查看 Playwright 截图和视频
 
@@ -115,6 +118,80 @@ npx playwright show-report playwright-report
 
 **注意：** 根据配置（`screenshot: 'only-on-failure'` 和 `video: 'retain-on-failure'`），截图和视频只在测试失败时生成。如需每次测试都生成，可修改 `frontend/playwright.config.ts`。
 
+### 📊 如何查看代码覆盖率 HTML 报告
+
+**在 GitHub Actions 中查看：**
+1. 进入仓库 → **Actions** → 选择对应的 Workflow Run
+2. 在页面右侧或底部找到 **Artifacts** 区域
+3. 下载 `coverage_reports` 构件
+4. 解压后：
+   - **汇总报告**：打开 `coverage-summary.html`（在浏览器中查看整体覆盖率概览）
+   - **详细报告**：
+     - `coverage-user-html/index.html` - User Service 详细覆盖率
+     - `coverage-activity-html/index.html` - Activity Service 详细覆盖率
+     - `coverage-notification-html/index.html` - Notification Service 详细覆盖率
+
+**使用 GitHub CLI 下载：**
+```bash
+# 下载 coverage_reports
+gh run download <run-id> -n coverage_reports
+
+# 解压后查看
+open coverage-summary.html  # macOS
+xdg-open coverage-summary.html  # Linux
+start coverage-summary.html  # Windows
+```
+
+**本地生成（如果本地运行了测试）：**
+```bash
+# 在对应服务目录下
+cd services/user
+coverage html
+# 打开 htmlcov/index.html
+```
+
+**HTML 报告特点：**
+- ✅ 可视化进度条和百分比
+- ✅ 按文件查看覆盖率详情
+- ✅ 高亮显示未覆盖的代码行
+- ✅ 支持点击跳转到源代码
+
+### 🔍 如何查看 SARIF 文件
+
+SARIF (Static Analysis Results Interchange Format) 是安全扫描结果的标准化格式。
+
+**方式 1：GitHub Code Scanning（推荐）**
+1. 进入仓库 → **Security** → **Code scanning alerts**
+2. 如果 SARIF 文件已通过 GitHub Actions 上传，漏洞会自动显示在这里
+3. 可以按工具、严重性、文件等筛选查看
+
+**方式 2：VS Code SARIF Viewer 扩展**
+1. 在 VS Code 中安装扩展：**SARIF Viewer**（Microsoft）
+2. 下载 `sast_reports` artifact
+3. 解压后，在 VS Code 中打开任一 `.sarif` 文件
+4. 扩展会自动解析并显示在 **Problems** 面板中
+
+**方式 3：在线 SARIF 查看器**
+- 访问：https://sarifviewer.azurewebsites.net/
+- 上传 `.sarif` 文件即可查看
+
+**方式 4：命令行工具（sarif-tools）**
+```bash
+# 安装
+npm install -g @microsoft/sarif-tools
+
+# 转换为 HTML
+sarif-tools sarif-to-html gitleaks.sarif -o gitleaks-report.html
+```
+
+**SARIF 文件说明：**
+- `gitleaks.sarif` - 密钥泄露扫描结果
+- `bandit.sarif` - Python 代码安全问题
+- `semgrep.sarif` - 通用代码安全问题
+- `pip-audit-*.sarif` - Python 依赖漏洞扫描
+
+**注意：** SARIF 文件是 JSON 格式，可以直接用文本编辑器打开，但建议使用上述工具查看以获得更好的可视化效果。
+
 ## 🧪 本地复现（可选）
 ```bash
 # 集成环境
@@ -136,7 +213,7 @@ jmeter -n -t tests/perf/jmeter_test.jmx -l jmeter.jtl -e -o jmeter-report
 - YAML 解析错误（隐式键/缩进）：确保 `steps:` 下每步为“两个空格 + - name:”，多行脚本放在 `run: |` 或 `with: script: |` 且内容再缩进两个空格。
 - Python 覆盖率步骤失败：确认已安装 `coverage`，并在对应服务目录执行。
 - Postman/Playwright 失败：先检查三个服务 `/api/v1/health/` 是否就绪，再看 `integration_artifacts`。
- - SARIF 查看：GitHub Security → Code scanning alerts 上传，或本地 VS Code SARIF Viewer 打开。
+ - SARIF 查看：详见上方 "如何查看 SARIF 文件" 章节。
  - 并发控制（可选）：可在顶层添加 `concurrency` 避免同分支重复运行。
 
 ## 🧵 流水线依赖关系（PR）
