@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { 
   Card, 
@@ -33,33 +33,49 @@ const HomePage: React.FC = () => {
   // 添加调试信息
   console.log('HomePage - user:', user);
 
+  const isMountedRef = useRef(true);
+
   useEffect(() => {
+    isMountedRef.current = true;
     loadStats();
+    
+    // 清理函数：防止组件卸载后更新状态
+    return () => {
+      isMountedRef.current = false;
+    };
   }, []);
 
   const loadStats = async () => {
     try {
-      setLoading(true);
+      if (isMountedRef.current) {
+        setLoading(true);
+      }
+      
       const [userStats, activityStats] = await Promise.all([
         userAPI.getStats(),
         activityAPI.getStats()
       ]);
       
-      setStats({
-        totalActivities: activityStats.total_activities || 0,
-        totalVolunteers: userStats.total_volunteers || 0,
-        totalNGOs: userStats.total_ngos || 0,
-      });
+      // 只有在组件仍然挂载时才更新状态
+      if (isMountedRef.current) {
+        setStats({
+          totalActivities: activityStats.total_activities || 0,
+          totalVolunteers: userStats.total_volunteers || 0,
+          totalNGOs: userStats.total_ngos || 0,
+        });
+        setLoading(false);
+      }
     } catch (error) {
       console.error('Failed to load stats:', error);
-      // 使用默认值
-      setStats({
-        totalActivities: 0,
-        totalVolunteers: 0,
-        totalNGOs: 0,
-      });
-    } finally {
-      setLoading(false);
+      // 只有在组件仍然挂载时才更新状态
+      if (isMountedRef.current) {
+        setStats({
+          totalActivities: 0,
+          totalVolunteers: 0,
+          totalNGOs: 0,
+        });
+        setLoading(false);
+      }
     }
   };
 

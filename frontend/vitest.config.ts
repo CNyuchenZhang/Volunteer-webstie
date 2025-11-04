@@ -22,15 +22,21 @@ export default defineConfig({
     pool: 'threads',
     poolOptions: {
       threads: {
-        singleThread: false,
+        singleThread: true, // 使用单线程模式，减少内存占用
         minThreads: 1,
-        maxThreads: 1, // 在 CI 环境中使用单线程减少内存占用
+        maxThreads: 1,
         isolate: true, // 隔离每个测试文件，避免内存泄漏累积
       },
     },
     // 减少内存占用
     testTimeout: 10000,
     hookTimeout: 10000,
+    // 强制垃圾回收
+    forceRerunTriggers: [],
+    // 减少并发
+    sequence: {
+      shuffle: false,
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html', 'lcov'],
