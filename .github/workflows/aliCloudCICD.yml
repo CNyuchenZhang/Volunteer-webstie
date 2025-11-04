@@ -338,7 +338,28 @@ jobs:
       - name: Install frontend dependencies
         run: |
           cd frontend
-          npm ci || npm install
+          # 尝试使用 npm ci 进行快速、可靠的安装
+          if npm ci; then
+            echo "✅ npm ci 成功"
+          else
+            echo "⚠️ npm ci 失败，回退到 npm install"
+            npm install
+          fi
+          # 强制安装 Rollup 的可选依赖（npm 的 optional dependencies bug）
+          echo "强制安装 Rollup 可选依赖..."
+          # 先尝试安装到 rollup 的 node_modules 中
+          mkdir -p node_modules/rollup/node_modules 2>/dev/null || true
+          npm install @rollup/rollup-linux-x64-gnu@^4.52.5 --no-save --legacy-peer-deps --force || \
+          npm install @rollup/rollup-linux-x64-gnu@^4.52.5 --save-optional --legacy-peer-deps || echo "⚠️  gnu 版本安装失败"
+          npm install @rollup/rollup-linux-x64-musl@^4.52.5 --no-save --legacy-peer-deps --force || \
+          npm install @rollup/rollup-linux-x64-musl@^4.52.5 --save-optional --legacy-peer-deps || echo "⚠️  musl 版本安装失败"
+          # 验证安装
+          if [ -d "node_modules/@rollup/rollup-linux-x64-gnu" ] || [ -d "node_modules/rollup/node_modules/@rollup/rollup-linux-x64-gnu" ]; then
+            echo "✅ @rollup/rollup-linux-x64-gnu 已安装"
+          else
+            echo "⚠️ @rollup/rollup-linux-x64-gnu 未找到，尝试直接安装到根目录..."
+            npm install @rollup/rollup-linux-x64-gnu@4.52.5 --no-save --legacy-peer-deps --force
+          fi
 
       - name: Run frontend unit tests (with coverage)
         run: |
@@ -619,6 +640,16 @@ jobs:
       - name: Run frontend build test
         run: |
           cd frontend
+          # 确保 Rollup 的可选依赖已安装（npm 的 optional dependencies bug）
+          echo "检查 Rollup 可选依赖..."
+          if [ ! -d "node_modules/@rollup/rollup-linux-x64-gnu" ] && [ ! -d "node_modules/rollup/node_modules/@rollup/rollup-linux-x64-gnu" ]; then
+            echo "⚠️ Rollup 可选依赖未找到，正在安装..."
+            npm install @rollup/rollup-linux-x64-gnu@^4.52.5 --save-optional --legacy-peer-deps || echo "⚠️  gnu 版本安装失败"
+            npm install @rollup/rollup-linux-x64-musl@^4.52.5 --save-optional --legacy-peer-deps || echo "⚠️  musl 版本安装失败"
+          else
+            echo "✅ Rollup 可选依赖已存在"
+          fi
+          # 运行构建
           npm run build
           echo "✅ Frontend build successful"
 
@@ -646,7 +677,19 @@ jobs:
       - name: Install Newman and Playwright
         run: |
           sudo npm -g i newman
-          npm ci --prefix frontend || npm install --prefix frontend
+          cd frontend
+          # 尝试使用 npm ci 进行快速、可靠的安装
+          if npm ci; then
+            echo "✅ npm ci 成功"
+          else
+            echo "⚠️ npm ci 失败，回退到 npm install"
+            npm install
+          fi
+          # 确保 Rollup 的可选依赖被正确安装（npm 的 optional dependencies bug）
+          echo "安装 Rollup 可选依赖..."
+          npm install @rollup/rollup-linux-x64-gnu@^4.52.5 --save-optional --legacy-peer-deps || echo "⚠️  gnu 版本安装失败（可能已安装）"
+          npm install @rollup/rollup-linux-x64-musl@^4.52.5 --save-optional --legacy-peer-deps || echo "⚠️  musl 版本安装失败（可能已安装）"
+          cd ..
           npx playwright install --with-deps
 
       - name: Run Postman collection (API integration)
@@ -985,6 +1028,7 @@ jobs:
           fail_action: false
           allow_issue_writing: false
           upload_artifact: false
+          artifact_name: 'zapReport'  # 如果 action 仍尝试上传，使用有效名称
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -1231,11 +1275,23 @@ jobs:
         run: |
           echo "开始 k6 负载测试..."
           # 添加重试机制，如果第一次失败，等待后重试
-          k6 run --out json=k6-results.json tests/perf/k6-load.js || {
+          # 使用 summary 输出格式，它会在测试结束时输出一个包含所有指标的 JSON 对象
+          k6 run --out json=k6-results.json --summary-export=k6-summary.json tests/perf/k6-load.js || {
             echo "⚠️  k6 测试失败，等待 10 秒后重试..."
             sleep 10
-            k6 run --out json=k6-results.json tests/perf/k6-load.js || echo "⚠️  k6 测试重试后仍然失败"
+            k6 run --out json=k6-results.json --summary-export=k6-summary.json tests/perf/k6-load.js || echo "⚠️  k6 测试重试后仍然失败"
           }
+          # 验证输出文件
+          if [ -f k6-summary.json ]; then
+            echo "✅ k6 summary 文件已生成"
+          fi
+          if [ -f k6-results.json ]; then
+            echo "✅ k6 results 文件已生成"
+            # 显示文件大小和前几行，用于调试
+            echo "文件大小: $(wc -c < k6-results.json) bytes"
+            echo "前 3 行:"
+            head -n 3 k6-results.json || echo "无法读取文件"
+          fi
 
       - name: Generate k6 summary
         continue-on-error: true
@@ -1244,20 +1300,73 @@ jobs:
           import json
           import os
           
-          k6_files = ['k6-results.json', 'k6-summary.json']
+          k6_files = ['k6-summary.json', 'k6-results.json']  # 优先使用 summary，因为它更可靠
           k6_data = None
+          used_file = None
           
           for k6_file in k6_files:
               if os.path.exists(k6_file):
+                  file_size = os.path.getsize(k6_file)
+                  print(f"📄 检查文件: {k6_file} (大小: {file_size} bytes)")
+                  
                   try:
                       with open(k6_file, 'r', encoding='utf-8') as f:
-                          k6_data = json.load(f)
-                      print(f"✅ Found k6 results in {k6_file}")
-                      break
+                          content = f.read().strip()
+                      
+                      if not content:
+                          print(f"⚠️  {k6_file} 文件为空，跳过")
+                          continue
+                      
+                      # k6 的 JSON 输出可能是 JSONL 格式（每行一个 JSON 对象）
+                      # 尝试解析为单个 JSON 对象
+                      try:
+                          k6_data = json.loads(content)
+                          if 'metrics' in k6_data:
+                              used_file = k6_file
+                              print(f"✅ 成功解析 {k6_file} (单个 JSON 对象，包含 metrics)")
+                              break
+                          else:
+                              print(f"⚠️  {k6_file} 是有效的 JSON，但不包含 metrics 字段")
+                              k6_data = None
+                      except json.JSONDecodeError as e:
+                          print(f"⚠️  {k6_file} 不是单个 JSON 对象，尝试作为 JSONL 解析...")
+                          # 如果是 JSONL 格式，读取所有行
+                          lines = [line.strip() for line in content.split('\n') if line.strip()]
+                          print(f"   发现 {len(lines)} 行数据")
+                          
+                          if lines:
+                              # 从后往前查找包含 metrics 的行
+                              found = False
+                              for i, line in enumerate(reversed(lines)):
+                                  try:
+                                      data = json.loads(line)
+                                      if 'metrics' in data:
+                                          k6_data = data
+                                          used_file = k6_file
+                                          print(f"✅ 成功解析 {k6_file} (JSONL 格式，第 {len(lines)-i} 行包含 metrics)")
+                                          found = True
+                                          break
+                                  except json.JSONDecodeError:
+                                      continue
+                              
+                              if not found and lines:
+                                  # 如果没找到包含 metrics 的行，尝试解析最后一行
+                                  try:
+                                      k6_data = json.loads(lines[-1])
+                                      used_file = k6_file
+                                      print(f"✅ 成功解析 {k6_file} (JSONL 格式，使用最后一行)")
+                                  except json.JSONDecodeError as e2:
+                                      print(f"⚠️  无法解析最后一行: {e2}")
+                      
+                      if k6_data and 'metrics' in k6_data:
+                          break
+                      
                   except Exception as e:
-                      print(f"⚠️  Error reading {k6_file}: {e}")
+                      print(f"⚠️  读取 {k6_file} 时出错: {e}")
+                      import traceback
+                      traceback.print_exc()
           
-          if k6_data:
+          if k6_data and 'metrics' in k6_data:
               try:
                   # 解析 k6 JSON 结果
                   metrics = k6_data.get('metrics', {})
@@ -1351,20 +1460,97 @@ jobs:
           PYTHON_SCRIPT
 
       - name: Install JMeter
-        run: sudo apt-get update && sudo apt-get install -y jmeter
+        run: |
+          # 卸载旧版本的 JMeter（如果存在）
+          sudo apt-get remove -y jmeter 2>/dev/null || true
+          
+          # 安装最新版本的 JMeter
+          echo "安装最新版本的 JMeter..."
+          JMETER_VERSION="5.6.2"
+          cd /tmp
+          wget -q https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-${JMETER_VERSION}.tgz
+          tar xzf apache-jmeter-${JMETER_VERSION}.tgz
+          sudo mv apache-jmeter-${JMETER_VERSION} /opt/jmeter
+          sudo ln -sf /opt/jmeter/bin/jmeter /usr/local/bin/jmeter
+          sudo ln -sf /opt/jmeter/bin/jmeter.sh /usr/local/bin/jmeter.sh
+          echo "✅ JMeter ${JMETER_VERSION} 安装完成"
+          
+          # 验证安装
+          /opt/jmeter/bin/jmeter --version || /usr/local/bin/jmeter --version
+
+      - name: Configure JMeter security settings
+        run: |
+          # 创建 JMeter 配置文件目录
+          mkdir -p ~/.jmeter
+          mkdir -p /tmp/jmeter-config
+          
+          # 创建用户配置文件
+          cat > ~/.jmeter/jmeter.properties << 'EOF'
+          # 允许反序列化 ScriptWrapper 等类（用于无 GUI 模式）
+          xstream.security.allowXStreamType=org.apache.jmeter.save.ScriptWrapper
+          xstream.security.allowXStreamType=org.apache.jmeter.save.ScriptWrapperBean
+          xstream.security.allowXStreamType=org.apache.jmeter.save.ScriptWrapperBean2
+          xstream.security.allowXStreamType=org.apache.jmeter.save.ScriptWrapperBean3
+          EOF
+          echo "✅ JMeter 用户安全配置已创建"
+          
+          # 创建临时配置文件
+          cat > /tmp/jmeter-config/jmeter.properties << 'EOF'
+          xstream.security.allowXStreamType=org.apache.jmeter.save.ScriptWrapper
+          xstream.security.allowXStreamType=org.apache.jmeter.save.ScriptWrapperBean
+          xstream.security.allowXStreamType=org.apache.jmeter.save.ScriptWrapperBean2
+          xstream.security.allowXStreamType=org.apache.jmeter.save.ScriptWrapperBean3
+          EOF
+          echo "✅ JMeter 临时配置文件已创建"
+          
+          # 如果使用系统安装的 JMeter，也更新系统配置
+          if [ -f /opt/jmeter/bin/jmeter.properties ]; then
+            echo "xstream.security.allowXStreamType=org.apache.jmeter.save.ScriptWrapper" | sudo tee -a /opt/jmeter/bin/jmeter.properties
+            echo "xstream.security.allowXStreamType=org.apache.jmeter.save.ScriptWrapperBean" | sudo tee -a /opt/jmeter/bin/jmeter.properties
+            echo "✅ 已更新 JMeter 系统配置文件"
+          fi
 
       - name: Run JMeter plan
         continue-on-error: true
         run: |
           # 运行 JMeter 测试并生成 JTL 文件
-          jmeter -n -t tests/perf/jmeter_test.jmx -l jmeter.jtl || true
+          echo "开始运行 JMeter 测试..."
+          echo "JMeter 路径: $(which jmeter || echo '/opt/jmeter/bin/jmeter')"
+          
+          # 确定 JMeter 可执行文件路径
+          JMETER_BIN="/opt/jmeter/bin/jmeter"
+          if [ ! -f "$JMETER_BIN" ]; then
+            JMETER_BIN="jmeter"
+          fi
+          
+          # 使用系统属性配置安全设置（最可靠的方法）
+          echo "使用系统属性配置安全设置..."
+          $JMETER_BIN -n -t tests/perf/jmeter_test.jmx -l jmeter.jtl \
+            -Jxstream.security.allowXStreamType=org.apache.jmeter.save.ScriptWrapper \
+            -Jxstream.security.allowXStreamType=org.apache.jmeter.save.ScriptWrapperBean \
+            -Jxstream.security.allowXStreamType=org.apache.jmeter.save.ScriptWrapperBean2 \
+            -Jxstream.security.allowXStreamType=org.apache.jmeter.save.ScriptWrapperBean3 \
+            --suppressJMeterWarnings 2>&1 || {
+            echo "⚠️  第一次尝试失败，使用更宽松的安全设置..."
+            # 回退方案：允许所有类型（不推荐，但作为最后手段）
+            $JMETER_BIN -n -t tests/perf/jmeter_test.jmx -l jmeter.jtl \
+              -Jxstream.security.allowXStreamType=* \
+              --suppressJMeterWarnings 2>&1 || {
+              echo "⚠️  JMeter 测试完全失败，显示错误信息："
+              $JMETER_BIN -n -t tests/perf/jmeter_test.jmx -l jmeter.jtl 2>&1 || true
+            }
+          }
           
           # 如果 JTL 文件生成成功，生成 HTML 报告
-          if [ -f jmeter.jtl ]; then
-            echo "生成 JMeter HTML 报告..."
-            jmeter -g jmeter.jtl -o jmeter-report || echo "HTML 报告生成失败"
+          if [ -f jmeter.jtl ] && [ -s jmeter.jtl ]; then
+            echo "✅ jmeter.jtl 文件已生成，生成 HTML 报告..."
+            jmeter -g jmeter.jtl -o jmeter-report || echo "⚠️  HTML 报告生成失败"
           else
-            echo "⚠️  jmeter.jtl 文件未生成，跳过 HTML 报告生成"
+            echo "⚠️  jmeter.jtl 文件未生成或为空，跳过 HTML 报告生成"
+            # 检查文件是否存在但为空
+            if [ -f jmeter.jtl ] && [ ! -s jmeter.jtl ]; then
+              echo "⚠️  jmeter.jtl 文件存在但为空"
+            fi
           fi
 
       - name: Generate JMeter JTL summary
