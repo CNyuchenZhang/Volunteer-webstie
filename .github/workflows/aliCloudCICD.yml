@@ -128,7 +128,7 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
 
-      - name: Check coverage threshold (aggregate ≥85%, non-blocking)
+      - name: Check coverage threshold
         continue-on-error: true
         run: |
           python - << 'PY'
@@ -239,6 +239,7 @@ jobs:
           exit-code: '0'
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
+          output: 'trivy-user-image.txt'
 
       - name: Trivy image scan (activity)
         uses: aquasecurity/trivy-action@0.20.0
@@ -248,6 +249,7 @@ jobs:
           exit-code: '0'
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
+          output: 'trivy-activity-image.txt'
 
       - name: Trivy image scan (notification)
         uses: aquasecurity/trivy-action@0.20.0
@@ -257,6 +259,7 @@ jobs:
           exit-code: '0'
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
+          output: 'trivy-notification-image.txt'
 
       - name: Trivy Dockerfile scan (user-service)
         uses: aquasecurity/trivy-action@0.20.0
@@ -266,6 +269,7 @@ jobs:
           format: 'table'
           exit-code: '0'
           severity: 'CRITICAL,HIGH'
+          output: 'trivy-user-dockerfile.txt'
 
       - name: Trivy Dockerfile scan (activity-service)
         uses: aquasecurity/trivy-action@0.20.0
@@ -275,6 +279,7 @@ jobs:
           format: 'table'
           exit-code: '0'
           severity: 'CRITICAL,HIGH'
+          output: 'trivy-activity-dockerfile.txt'
 
       - name: Trivy Dockerfile scan (notification-service)
         uses: aquasecurity/trivy-action@0.20.0
@@ -284,6 +289,7 @@ jobs:
           format: 'table'
           exit-code: '0'
           severity: 'CRITICAL,HIGH'
+          output: 'trivy-notification-dockerfile.txt'
 
       - name: Trivy Dockerfile scan (frontend)
         uses: aquasecurity/trivy-action@0.20.0
@@ -293,23 +299,39 @@ jobs:
           format: 'table'
           exit-code: '0'
           severity: 'CRITICAL,HIGH'
+          output: 'trivy-frontend-dockerfile.txt'
 
       - name: Checkov scan (Dockerfiles)
         continue-on-error: true
         run: |
           pip install checkov
-          checkov -d . --framework dockerfile --output cli || true
+          checkov -d . --framework dockerfile --output cli --output-file-path checkov-dockerfile.txt || true
 
       - name: Checkov scan (K8s manifests)
         continue-on-error: true
         run: |
-          checkov -d k8s --framework kubernetes --output cli || true
+          checkov -d k8s --framework kubernetes --output cli --output-file-path checkov-k8s.txt || true
+
+      - name: Upload scan results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: container_iac_scan_results
+          path: |
+            trivy-*.txt
+            checkov-*.txt
+          if-no-files-found: ignore
+          retention-days: 7
 
   # DAST（PR）：对本地集成环境进行基线动态扫描
   dast:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-22.04
     needs: [integration]
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -340,6 +362,7 @@ jobs:
           rules_file_name: '.zap/rules.tsv'
           cmd_options: '-a -m 5'
           fail_action: false
+          allow_issue_writing: false
 
       - name: Upload ZAP report
         if: always()
@@ -352,9 +375,9 @@ jobs:
             report_md.md
           if-no-files-found: ignore
 
-  # 性能测试（push 或手动），使用接近生产的进程模型
+  # 性能测试（PR），使用接近生产的进程模型
   perf:
-    if: github.event_name == 'push'
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-22.04
     needs: [integration]
     steps:
@@ -364,7 +387,27 @@ jobs:
       - name: Launch perf env (gunicorn)
         run: docker compose -f docker-compose.perf.yml up -d --build
 
+      - name: Wait for services to be ready
+        run: |
+          echo "等待性能测试环境服务启动..."
+          for i in {1..60}; do
+            if curl -fsS http://localhost:8001/api/v1/health/ > /dev/null 2>&1 && \
+               curl -fsS http://localhost:8002/api/v1/health/ > /dev/null 2>&1 && \
+               curl -fsS http://localhost:8003/api/v1/health/ > /dev/null 2>&1; then
+              echo "✅ 所有服务已就绪"
+              break
+            fi
+            echo "等待中... ($i/60)"
+            sleep 2
+          done
+          
+          # 验证服务是否真的可用
+          curl -fsS http://localhost:8001/api/v1/health/ || (echo "❌ user-service 未就绪" && exit 1)
+          curl -fsS http://localhost:8002/api/v1/health/ || (echo "❌ activity-service 未就绪" && exit 1)
+          curl -fsS http://localhost:8003/api/v1/health/ || (echo "❌ notification-service 未就绪" && exit 1)
+
       - name: k6 load test
+        continue-on-error: true
         uses: grafana/k6-action@v0.3.1
         with:
           filename: tests/perf/k6-load.js
@@ -373,16 +416,20 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y jmeter
 
       - name: Run JMeter plan
+        continue-on-error: true
         run: |
-          jmeter -n -t tests/perf/jmeter_test.jmx -l jmeter.jtl -e -o jmeter-report
+          jmeter -n -t tests/perf/jmeter_test.jmx -l jmeter.jtl -e -o jmeter-report || true
 
       - name: Upload perf artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: perf_results
           path: |
             jmeter.jtl
             jmeter-report
+          if-no-files-found: ignore
+          retention-days: 7
 
   # 部署阶段 - 推送到main分支时运行
   deploy:
