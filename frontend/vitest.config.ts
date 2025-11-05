@@ -24,10 +24,11 @@ export default defineConfig({
       forks: {
         singleFork: true,  // 使用单个 fork，减少内存占用
         isolate: true,     // 隔离每个测试文件，避免内存泄漏累积
+        execArgv: ['--expose-gc', '--max-old-space-size=4096'],  // 启用垃圾回收并增加堆内存
       },
     },
     // 减少内存占用
-    testTimeout: 8000,      // 减少超时时间
+    testTimeout: 10000,     // 增加超时时间以适应 GC
     hookTimeout: 5000,      // 减少 hook 超时时间
     teardownTimeout: 5000,  // 添加清理超时
     // 强制垃圾回收
@@ -37,6 +38,8 @@ export default defineConfig({
       shuffle: false,
       concurrent: false,  // 禁用并发，顺序执行测试
     },
+    // 启用隔离模式
+    isolate: true,
     // 优化覆盖率收集
     coverage: {
       provider: 'v8',

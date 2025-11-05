@@ -519,6 +519,27 @@ jobs:
           # 尝试运行带覆盖率的测试，如果失败则运行不带覆盖率的测试
           # 使用更保守的内存设置和更短的超时时间
           npm run test:unit:coverage || npm run test:unit || true
+          
+          # 验证覆盖率文件是否生成
+          if [ ! -f "coverage/coverage-summary.json" ]; then
+            echo "⚠️  覆盖率文件未生成，创建一个最小的覆盖率文件"
+            mkdir -p coverage
+            cat > coverage/coverage-summary.json << 'EOF'
+          {
+            "total": {
+              "lines": {"total": 0, "covered": 0, "skipped": 0, "pct": 0},
+              "statements": {"total": 0, "covered": 0, "skipped": 0, "pct": 0},
+              "functions": {"total": 0, "covered": 0, "skipped": 0, "pct": 0},
+              "branches": {"total": 0, "covered": 0, "skipped": 0, "pct": 0}
+            }
+          }
+          EOF
+            echo "✅ 已创建占位符覆盖率文件（测试可能失败，覆盖率为0%）"
+          else
+            echo "✅ 覆盖率文件已生成"
+            # 显示覆盖率文件内容的前几行
+            head -n 20 coverage/coverage-summary.json || true
+          fi
         continue-on-error: true
         env:
           NODE_OPTIONS: "--max-old-space-size=8192 --expose-gc"
@@ -670,10 +691,23 @@ jobs:
                       total_covered += frontend_covered
                       total_lines += frontend_total_lines
                       print(f"✅ 前端覆盖率: {frontend_percentage:.2f}% ({frontend_covered}/{frontend_total_lines})")
+                  else:
+                      print("⚠️  前端测试可能失败，覆盖率为 0%（已创建占位符文件）")
+                      coverage_data['frontend'] = {
+                          'covered': 0,
+                          'total': 0,
+                          'percentage': 0
+                      }
               except Exception as e:
                   print(f"⚠️  无法解析前端覆盖率: {e}")
           else:
-              print("⚠️  前端覆盖率文件不存在，跳过前端覆盖率统计")
+              print("⚠️  前端覆盖率文件不存在（这不应该发生，因为应该创建了占位符）")
+              # 即使文件不存在，也添加一个占位符条目
+              coverage_data['frontend'] = {
+                  'covered': 0,
+                  'total': 0,
+                  'percentage': 0
+              }
           
           aggregate_percentage = (total_covered / total_lines * 100) if total_lines > 0 else 0
           
@@ -761,10 +795,15 @@ jobs:
                       <a href="coverage-notification-html/index.html" target="_blank">Notification Service Details</a>
           """
           
-          # 添加前端覆盖率链接（如果存在）
+          # 添加前端覆盖率链接（如果存在且有数据）
           if 'frontend' in coverage_data:
-              html += """
+              if coverage_data['frontend']['total'] > 0:
+                  html += """
                       <a href="frontend/coverage/index.html" target="_blank">Frontend Details</a>
+          """
+              else:
+                  html += """
+                      <span style="color: #dc3545; padding: 8px 16px;">⚠️ Frontend tests failed - No coverage data</span>
           """
           
           html += """

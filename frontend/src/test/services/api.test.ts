@@ -145,6 +145,63 @@ describe('API Services', () => {
       expect(mockStore.instanceMethods.get).toHaveBeenCalled();
       expect(result).toEqual(mockResponse.data);
     });
+
+    it('应该能够调用登出API', async () => {
+      const mockStore = getMockStore();
+      const mockResponse = { data: { message: 'success' } };
+      mockStore.instanceMethods.post.mockResolvedValue(mockResponse);
+
+      const result = await userAPI.logout();
+
+      expect(mockStore.instanceMethods.post).toHaveBeenCalled();
+      expect(result).toEqual(mockResponse.data);
+    });
+
+    it('应该能够调用更新用户信息API', async () => {
+      const mockStore = getMockStore();
+      const mockResponse = { data: { id: 1, username: 'updateduser' } };
+      mockStore.instanceMethods.put.mockResolvedValue(mockResponse);
+
+      const result = await userAPI.updateProfile({ username: 'updateduser' });
+
+      expect(mockStore.instanceMethods.put).toHaveBeenCalled();
+      expect(result).toEqual(mockResponse.data);
+    });
+
+    it('应该能够调用上传头像API', async () => {
+      const mockStore = getMockStore();
+      const mockResponse = { data: { avatar: '/media/avatars/test.jpg' } };
+      mockStore.instanceMethods.post.mockResolvedValue(mockResponse);
+
+      const formData = new FormData();
+      formData.append('avatar', new Blob(), 'test.jpg');
+      const result = await userAPI.uploadAvatar(formData);
+
+      expect(mockStore.instanceMethods.post).toHaveBeenCalled();
+      expect(result).toEqual(mockResponse.data);
+    });
+
+    it('应该能够调用删除头像API', async () => {
+      const mockStore = getMockStore();
+      const mockResponse = { data: { message: 'success' } };
+      mockStore.instanceMethods.delete.mockResolvedValue(mockResponse);
+
+      const result = await userAPI.removeAvatar();
+
+      expect(mockStore.instanceMethods.delete).toHaveBeenCalled();
+      expect(result).toEqual(mockResponse.data);
+    });
+
+    it('应该能够调用获取用户统计信息API', async () => {
+      const mockStore = getMockStore();
+      const mockResponse = { data: { total_users: 100, total_volunteers: 80 } };
+      mockStore.instanceMethods.get.mockResolvedValue(mockResponse);
+
+      const result = await userAPI.getStats();
+
+      expect(mockStore.instanceMethods.get).toHaveBeenCalled();
+      expect(result).toEqual(mockResponse.data);
+    });
   });
 
   describe('activityAPI', () => {
@@ -188,6 +245,129 @@ describe('API Services', () => {
       expect(mockStore.instanceMethods.post).toHaveBeenCalled();
       expect(result).toEqual(mockResponse.data);
     });
+
+    it('应该能够调用创建活动API（使用FormData）', async () => {
+      const mockStore = getMockStore();
+      const mockResponse = { data: { id: 2, title: 'New Activity with Image' } };
+      mockStore.instanceMethods.post.mockResolvedValue(mockResponse);
+
+      const formData = new FormData();
+      formData.append('title', 'New Activity with Image');
+      const result = await activityAPI.createActivity(formData);
+
+      expect(mockStore.instanceMethods.post).toHaveBeenCalled();
+      expect(result).toEqual(mockResponse.data);
+    });
+
+    it('应该能够调用获取活动分类列表API', async () => {
+      const mockStore = getMockStore();
+      const mockResponse = { data: [{ id: 1, name: '环保' }, { id: 2, name: '教育' }] };
+      mockStore.instanceMethods.get.mockResolvedValue(mockResponse);
+
+      const result = await activityAPI.getCategories();
+
+      expect(mockStore.instanceMethods.get).toHaveBeenCalled();
+      expect(result).toEqual(mockResponse.data);
+    });
+
+    it('应该能够调用申请参加活动API', async () => {
+      const mockStore = getMockStore();
+      const mockResponse = { data: { id: 1, activity: 1, status: 'pending' } };
+      mockStore.instanceMethods.post.mockResolvedValue(mockResponse);
+
+      const result = await activityAPI.joinActivity(1, { note: 'I want to join' });
+
+      expect(mockStore.instanceMethods.post).toHaveBeenCalled();
+      expect(result).toEqual(mockResponse.data);
+    });
+
+    it('应该能够调用检查申请状态API', async () => {
+      const mockStore = getMockStore();
+      const mockResponse = { data: { results: [{ id: 1, status: 'approved' }] } };
+      mockStore.instanceMethods.get.mockResolvedValue(mockResponse);
+
+      const result = await activityAPI.checkApplicationStatus(1);
+
+      expect(mockStore.instanceMethods.get).toHaveBeenCalled();
+      expect(result).toEqual(mockResponse.data);
+    });
+
+    it('应该能够调用获取待审批活动API', async () => {
+      const mockStore = getMockStore();
+      const mockResponse = { data: { results: [{ id: 1, approval_status: 'pending' }] } };
+      mockStore.instanceMethods.get.mockResolvedValue(mockResponse);
+
+      const result = await activityAPI.getPendingActivities();
+
+      expect(mockStore.instanceMethods.get).toHaveBeenCalled();
+      expect(result).toEqual(mockResponse.data);
+    });
+
+    it('应该能够调用审批活动API', async () => {
+      const mockStore = getMockStore();
+      const mockResponse = { data: { id: 1, approval_status: 'approved' } };
+      mockStore.instanceMethods.patch.mockResolvedValue(mockResponse);
+
+      const result = await activityAPI.approveActivity(1, { approval_status: 'approved' });
+
+      expect(mockStore.instanceMethods.patch).toHaveBeenCalled();
+      expect(result).toEqual(mockResponse.data);
+    });
+
+    it('应该能够调用获取活动参与者API', async () => {
+      const mockStore = getMockStore();
+      const mockResponse = { data: { results: [{ id: 1, user: 'test' }] } };
+      mockStore.instanceMethods.get.mockResolvedValue(mockResponse);
+
+      const result = await activityAPI.getActivityParticipants(1);
+
+      expect(mockStore.instanceMethods.get).toHaveBeenCalled();
+      expect(result).toEqual(mockResponse.data);
+    });
+
+    it('应该能够调用获取所有参与者API', async () => {
+      const mockStore = getMockStore();
+      const mockResponse = { data: { results: [] } };
+      mockStore.instanceMethods.get.mockResolvedValue(mockResponse);
+
+      const result = await activityAPI.getAllParticipants();
+
+      expect(mockStore.instanceMethods.get).toHaveBeenCalled();
+      expect(result).toEqual(mockResponse.data);
+    });
+
+    it('应该能够调用审批参与者API', async () => {
+      const mockStore = getMockStore();
+      const mockResponse = { data: { id: 1, status: 'approved' } };
+      mockStore.instanceMethods.patch.mockResolvedValue(mockResponse);
+
+      const result = await activityAPI.approveParticipant(1, { status: 'approved' });
+
+      expect(mockStore.instanceMethods.patch).toHaveBeenCalled();
+      expect(result).toEqual(mockResponse.data);
+    });
+
+    it('应该能够调用更新活动状态API', async () => {
+      const mockStore = getMockStore();
+      const mockResponse = { data: { id: 1, status: 'completed' } };
+      mockStore.instanceMethods.patch.mockResolvedValue(mockResponse);
+
+      const result = await activityAPI.updateActivityStatus(1, { status: 'completed' });
+
+      expect(mockStore.instanceMethods.patch).toHaveBeenCalled();
+      expect(result).toEqual(mockResponse.data);
+    });
+
+    it('应该能够调用获取活动统计信息API', async () => {
+      const mockStore = getMockStore();
+      const mockResponse = { data: { total_activities: 50, total_participants: 200 } };
+      mockStore.instanceMethods.get.mockResolvedValue(mockResponse);
+
+      const result = await activityAPI.getStats();
+
+      expect(mockStore.instanceMethods.get).toHaveBeenCalled();
+      expect(result).toEqual(mockResponse.data);
+    });
   });
 
   describe('notificationAPI', () => {
@@ -218,6 +398,161 @@ describe('API Services', () => {
 
       expect(mockStore.defaultMethods.post).toHaveBeenCalled();
       expect(result).toEqual(mockResponse.data);
+    });
+
+    it('应该能够处理无用户ID的情况', async () => {
+      const mockStore = getMockStore();
+      const mockResponse = { data: { results: [], count: 0 } };
+      mockStore.defaultMethods.get.mockResolvedValue(mockResponse);
+      // 设置 localStorage 返回 null
+      localStorageMock.getItem.mockReturnValue(null);
+
+      const result = await notificationAPI.getNotifications();
+
+      expect(mockStore.defaultMethods.get).toHaveBeenCalled();
+      expect(result).toEqual(mockResponse.data);
+    });
+  });
+
+  describe('Error Handling - 拦截器错误处理', () => {
+    it('应该处理401错误并重定向到登录页', async () => {
+      const mockStore = getMockStore();
+      const error = {
+        response: { status: 401 },
+        message: 'Unauthorized'
+      };
+      mockStore.instanceMethods.get.mockRejectedValue(error);
+      
+      // 清空 location.href
+      window.location.href = '';
+
+      try {
+        await userAPI.getProfile();
+      } catch (e: any) {
+        expect(e.response.status).toBe(401);
+      }
+
+      // 验证 token 和 user 被移除
+      expect(localStorageMock.removeItem).toHaveBeenCalledWith('authToken');
+      expect(localStorageMock.removeItem).toHaveBeenCalledWith('user');
+    });
+
+    it('应该处理带有error字段的错误响应', async () => {
+      const mockStore = getMockStore();
+      const error = {
+        response: {
+          status: 400,
+          data: { error: '自定义错误消息' }
+        },
+        message: 'Bad Request'
+      };
+      mockStore.instanceMethods.post.mockRejectedValue(error);
+
+      try {
+        await userAPI.login({ email: 'test@test.com', password: 'wrong' });
+        expect.fail('应该抛出错误');
+      } catch (e: any) {
+        expect(e.message).toBe('自定义错误消息');
+      }
+    });
+
+    it('应该处理带有detail字段的错误响应', async () => {
+      const mockStore = getMockStore();
+      const error = {
+        response: {
+          status: 404,
+          data: { detail: '资源未找到' }
+        },
+        message: 'Not Found'
+      };
+      mockStore.instanceMethods.get.mockRejectedValue(error);
+
+      try {
+        await userAPI.getProfile();
+        expect.fail('应该抛出错误');
+      } catch (e: any) {
+        expect(e.message).toBe('资源未找到');
+      }
+    });
+
+    it('应该处理网络错误', async () => {
+      const mockStore = getMockStore();
+      const error = {
+        message: '网络请求失败，请检查网络连接'
+      };
+      mockStore.instanceMethods.get.mockRejectedValue(error);
+
+      try {
+        await userAPI.getProfile();
+        expect.fail('应该抛出错误');
+      } catch (e: any) {
+        expect(e.message).toBe('网络请求失败，请检查网络连接');
+      }
+    });
+
+    it('应该为activityAPI处理401错误', async () => {
+      const mockStore = getMockStore();
+      const error = {
+        response: { status: 401 },
+        message: 'Unauthorized'
+      };
+      mockStore.instanceMethods.get.mockRejectedValue(error);
+      
+      window.location.href = '';
+
+      try {
+        await activityAPI.getActivities({});
+      } catch (e: any) {
+        expect(e.response.status).toBe(401);
+      }
+
+      expect(localStorageMock.removeItem).toHaveBeenCalledWith('authToken');
+      expect(localStorageMock.removeItem).toHaveBeenCalledWith('user');
+    });
+
+    it('应该为activityAPI处理自定义错误消息', async () => {
+      const mockStore = getMockStore();
+      const error = {
+        response: {
+          status: 500,
+          data: { error: '服务器错误' }
+        },
+        message: 'Server Error'
+      };
+      mockStore.instanceMethods.post.mockRejectedValue(error);
+
+      try {
+        await activityAPI.createActivity({ title: 'Test' });
+        expect.fail('应该抛出错误');
+      } catch (e: any) {
+        expect(e.message).toBe('服务器错误');
+      }
+    });
+  });
+
+  describe('Request Interceptor - 请求拦截器', () => {
+    it('应该在请求中添加认证token', async () => {
+      const mockStore = getMockStore();
+      const mockResponse = { data: { id: 1 } };
+      mockStore.instanceMethods.get.mockResolvedValue(mockResponse);
+      localStorageMock.getItem.mockReturnValue('test-token');
+
+      await userAPI.getProfile();
+
+      expect(localStorageMock.getItem).toHaveBeenCalledWith('authToken');
+      expect(mockStore.instanceMethods.get).toHaveBeenCalled();
+    });
+
+    it('应该处理没有token的情况', async () => {
+      const mockStore = getMockStore();
+      const mockResponse = { data: { results: [] } };
+      mockStore.instanceMethods.get.mockResolvedValue(mockResponse);
+      localStorageMock.getItem.mockReturnValue(null);
+
+      await activityAPI.getActivities({});
+
+      expect(localStorageMock.getItem).toHaveBeenCalledWith('authToken');
+      expect(mockStore.instanceMethods.get).toHaveBeenCalled();
     });
   });
 });

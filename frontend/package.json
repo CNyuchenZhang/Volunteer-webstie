@@ -10,9 +10,9 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "type-check": "tsc --noEmit",
     "test": "playwright test",
-    "test:unit": "vitest run --no-coverage",
-    "test:unit:watch": "vitest",
-    "test:unit:coverage": "vitest run --coverage --reporter=verbose --pool=forks --poolOptions.forks.singleFork"
+    "test:unit": "NODE_OPTIONS='--max-old-space-size=4096' vitest run --no-coverage",
+    "test:unit:watch": "NODE_OPTIONS='--max-old-space-size=4096' vitest",
+    "test:unit:coverage": "NODE_OPTIONS='--max-old-space-size=4096' vitest run --coverage --reporter=verbose --pool=forks --poolOptions.forks.singleFork"
   },
   "dependencies": {
     "react": "^18.2.0",
