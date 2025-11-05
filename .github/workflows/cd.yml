@@ -146,8 +146,11 @@ jobs:
             echo "🔍 验证镜像导入状态..."
             
             # 先显示所有已导入的镜像，便于调试
-            echo "📋 containerd 中的镜像列表："
-            ctr -n k8s.io images list 2>/dev/null | grep -E "(REPOSITORY|jsrgzyc)" || ctr -n k8s.io images ls 2>/dev/null | grep jsrgzyc || echo "未找到 jsrgzyc 镜像"
+            echo "📋 containerd 中的完整镜像列表："
+            ctr -n k8s.io images list 2>/dev/null || ctr -n k8s.io images ls 2>/dev/null || echo "无法获取镜像列表"
+            echo ""
+            echo "📋 过滤后的 jsrgzyc 镜像："
+            ctr -n k8s.io images list 2>/dev/null | grep jsrgzyc || ctr -n k8s.io images ls 2>/dev/null | grep jsrgzyc || echo "未找到 jsrgzyc 镜像"
             
             max_attempts=10
             attempt=1
@@ -158,22 +161,51 @@ jobs:
               all_imported=true
               missing_images=()
               
+              # 获取镜像列表一次，避免重复调用
+              image_list_full=$(ctr -n k8s.io images list 2>/dev/null || ctr -n k8s.io images ls 2>/dev/null || echo "")
+              
               for image in "${required_images[@]}"; do
                 found=false
+                image_repo=$(echo "$image" | cut -d':' -f1)
+                image_name_only=$(echo "$image_repo" | cut -d'/' -f2)
                 
-                # 方法1: 使用 ctr images list（完整输出）
-                if ctr -n k8s.io images list 2>/dev/null | grep -qF "$image"; then
+                # 调试：显示检查的镜像信息
+                echo "  检查镜像: $image (仓库: $image_repo, 名称: $image_name_only)"
+                
+                # 方法1: 精确匹配完整镜像名
+                if echo "$image_list_full" | grep -qF "$image"; then
                   found=true
-                # 方法2: 使用 ctr images ls（简化输出，可能更可靠）
-                elif ctr -n k8s.io images ls 2>/dev/null | grep -qF "$image"; then
-                  found=true
-                # 方法3: 检查镜像仓库和标签（更灵活的匹配）
-                else
-                  image_repo=$(echo "$image" | cut -d':' -f1)
-                  image_list=$(ctr -n k8s.io images list 2>/dev/null)
-                  if echo "$image_list" | grep -q "$image_repo" && echo "$image_list" | grep -q "latest"; then
+                  echo "    → 通过方法1匹配（精确匹配）"
+                # 方法2: 匹配仓库名和标签（可能格式不同，在不同行）
+                elif echo "$image_list_full" | grep -q "$image_repo" && echo "$image_list_full" | grep -q "latest"; then
+                  # 进一步验证：确保仓库名和latest在同一行（同一个镜像）
+                  if echo "$image_list_full" | grep "$image_repo" | grep -q "latest"; then
                     found=true
+                    echo "    → 通过方法2匹配（仓库+标签，同一行）"
                   fi
+                # 方法3: 匹配包含仓库名的行，且包含latest标签
+                elif echo "$image_list_full" | grep "$image_repo" | grep -q "latest"; then
+                  found=true
+                  echo "    → 通过方法3匹配（仓库行包含latest）"
+                # 方法4: 使用模式匹配（仓库名/名称:标签）
+                elif echo "$image_list_full" | grep -E "$image_repo.*latest|$image_repo.*:latest" | grep -q "$image_name_only"; then
+                  found=true
+                  echo "    → 通过方法4匹配（模式匹配）"
+                # 方法5: 使用 ctr images check 命令直接检查
+                elif ctr -n k8s.io images check "$image" >/dev/null 2>&1; then
+                  found=true
+                  echo "    → 通过方法5匹配（ctr check）"
+                else
+                  echo "    → 所有匹配方法都失败"
+                  # 显示实际的匹配尝试和调试信息
+                  echo "    调试信息："
+                  echo "      查找镜像: $image"
+                  echo "      仓库名: $image_repo"
+                  echo "      镜像名: $image_name_only"
+                  echo "    相关行："
+                  echo "$image_list_full" | grep -i "$image_name_only" | head -5 || echo "      未找到包含 '$image_name_only' 的行"
+                  echo "    包含仓库名的行："
+                  echo "$image_list_full" | grep "$image_repo" | head -3 || echo "      未找到包含 '$image_repo' 的行"
                 fi
                 
                 if [ "$found" = true ]; then
