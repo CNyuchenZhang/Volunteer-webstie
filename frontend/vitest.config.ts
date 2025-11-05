@@ -46,9 +46,9 @@ export default defineConfig({
     // 优化覆盖率收集
     coverage: {
       provider: 'v8',
-      // CI环境只生成必要的报告格式
+      // CI环境生成JSON和HTML报告
       reporter: process.env.CI 
-        ? ['json-summary', 'json']  // CI只需要JSON
+        ? ['json-summary', 'json', 'html']  // CI生成JSON和HTML报告
         : ['text', 'json', 'html', 'lcov'],  // 本地开发需要更多格式
       exclude: [
         'node_modules/',
