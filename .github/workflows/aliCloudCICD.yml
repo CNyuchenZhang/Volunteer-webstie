@@ -36,7 +36,7 @@ jobs:
           pip install bandit semgrep pip-audit
 
       - name: Bandit (Python SAST)
-        run: bandit -r services -f sarif -o bandit.sarif || true
+        run: bandit -r services -f json -o bandit.json || true
 
       - name: Semgrep (generic SAST)
         run: semgrep ci --sarif --output semgrep.sarif || true
@@ -58,7 +58,7 @@ jobs:
           # 工具映射
           tool_names = {
               'gitleaks.sarif': 'Gitleaks - 密钥泄露检测',
-              'bandit.sarif': 'Bandit - Python 安全扫描',
+              'bandit.json': 'Bandit - Python 安全扫描',
               'semgrep.sarif': 'Semgrep - 通用代码安全扫描',
               'pip-audit-user.sarif': 'pip-audit - User Service 依赖漏洞',
               'pip-audit-activity.sarif': 'pip-audit - Activity Service 依赖漏洞',
@@ -67,6 +67,7 @@ jobs:
           
           all_results = {}
           
+          # 处理 SARIF 文件
           for sarif_file in glob.glob('*.sarif'):
               try:
                   with open(sarif_file, 'r', encoding='utf-8') as f:
@@ -213,6 +214,153 @@ jobs:
               except Exception as e:
                   print(f"⚠️  Error processing {sarif_file}: {e}")
           
+          # 处理 Bandit JSON 文件（格式与 SARIF 不同）
+          bandit_file = 'bandit.json'
+          if os.path.exists(bandit_file):
+              try:
+                  with open(bandit_file, 'r', encoding='utf-8') as f:
+                      bandit_data = json.load(f)
+                  
+                  tool_name = tool_names.get(bandit_file, 'Bandit - Python 安全扫描')
+                  findings = []
+                  total_findings = 0
+                  
+                  # Bandit JSON 格式：{"results": [{"issue_id": "...", "test_name": "...", "severity": "...", ...}]}
+                  results = bandit_data.get('results', [])
+                  total_findings = len(results)
+                  
+                  for result in results:
+                      issue_id = result.get('test_id', 'N/A')
+                      test_name = result.get('test_name', 'N/A')
+                      severity = result.get('issue_severity', result.get('severity', 'medium')).lower()
+                      confidence = result.get('issue_confidence', result.get('confidence', 'medium')).lower()
+                      message = result.get('issue_text', result.get('issue', 'N/A'))
+                      filename = result.get('filename', 'N/A')
+                      line_number = result.get('line_number', 'N/A')
+                      location_info = f"{filename}:{line_number}"
+                      
+                      # 组合 severity 和 confidence
+                      if severity == 'high' or confidence == 'high':
+                          severity_level = 'error'
+                      elif severity == 'medium' or confidence == 'medium':
+                          severity_level = 'warning'
+                      else:
+                          severity_level = 'note'
+                      
+                      findings.append({
+                          'rule_id': f"{test_name} ({issue_id})",
+                          'message': message,
+                          'severity': severity_level,
+                          'location': location_info
+                      })
+                  
+                  all_results[bandit_file] = {
+                      'tool': tool_name,
+                      'total': total_findings,
+                      'findings': findings
+                  }
+                  
+                  # 生成 Bandit HTML 报告
+                  html_file = bandit_file.replace('.json', '.html')
+                  severity_colors = {
+                      'error': '#dc3545',
+                      'warning': '#fd7e14',
+                      'note': '#ffc107',
+                      'none': '#6c757d'
+                  }
+                  
+                  html = f"""<!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>{tool_name} - SAST Report</title>
+              <style>
+                  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+                  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #f5f7fa; padding: 20px; line-height: 1.6; }}
+                  .container {{ max-width: 1400px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; }}
+                  header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; }}
+                  h1 {{ font-size: 28px; margin-bottom: 10px; }}
+                  .summary {{ padding: 20px; background: #f8f9fa; border-bottom: 1px solid #e0e0e0; }}
+                  .stat {{ display: inline-block; margin-right: 30px; }}
+                  .stat-number {{ font-size: 32px; font-weight: bold; color: #667eea; }}
+                  .stat-label {{ color: #6c757d; font-size: 14px; margin-top: 5px; }}
+                  .findings-table {{ width: 100%; border-collapse: collapse; }}
+                  .findings-table th {{ background: #495057; color: white; padding: 12px; text-align: left; font-weight: 600; }}
+                  .findings-table td {{ padding: 12px; border-bottom: 1px solid #e9ecef; }}
+                  .findings-table tr:hover {{ background: #f8f9fa; }}
+                  .severity-badge {{ display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; }}
+                  .severity-error {{ background: #dc3545; color: white; }}
+                  .severity-warning {{ background: #fd7e14; color: white; }}
+                  .severity-note {{ background: #ffc107; color: #212529; }}
+                  .severity-none {{ background: #6c757d; color: white; }}
+                  .location {{ font-family: 'Courier New', monospace; font-size: 13px; color: #667eea; }}
+                  .no-findings {{ text-align: center; padding: 40px; color: #28a745; font-size: 18px; }}
+                  .content {{ padding: 20px; }}
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <header>
+                      <h1>🔒 {tool_name}</h1>
+                      <div style="opacity: 0.9;">Security Scan Report</div>
+                  </header>
+                  
+                  <div class="summary">
+                      <div class="stat">
+                          <div class="stat-number">{total_findings}</div>
+                          <div class="stat-label">Total Findings</div>
+                      </div>
+                  </div>
+                  
+                  <div class="content">
+          """
+                  
+                  if findings:
+                      html += """
+                      <table class="findings-table">
+                          <thead>
+                              <tr>
+                                  <th>Rule ID</th>
+                                  <th>Severity</th>
+                                  <th>Location</th>
+                                  <th>Message</th>
+                              </tr>
+                          </thead>
+                          <tbody>
+                      """
+                      
+                      for finding in findings:
+                          severity_class = f'severity-{finding["severity"].lower()}'
+                          html += f"""
+                              <tr>
+                                  <td class="location">{finding['rule_id']}</td>
+                                  <td><span class="severity-badge {severity_class}">{finding['severity'].upper()}</span></td>
+                                  <td class="location">{finding['location']}</td>
+                                  <td>{finding['message'][:200]}{'...' if len(finding['message']) > 200 else ''}</td>
+                              </tr>
+                          """
+                      
+                      html += """
+                          </tbody>
+                      </table>
+                      """
+                  else:
+                      html += '<div class="no-findings">✅ No security issues found!</div>'
+                  
+                  html += """
+                  </div>
+              </div>
+          </body>
+          </html>
+          """
+                  
+                  with open(html_file, 'w', encoding='utf-8') as f:
+                      f.write(html)
+                  print(f"✅ Generated {html_file}")
+              except Exception as e:
+                  print(f"⚠️  Error processing {bandit_file}: {e}")
+          
           # 生成汇总报告
           total_all = sum(r['total'] for r in all_results.values())
           html_summary = f"""<!DOCTYPE html>
@@ -266,9 +414,15 @@ jobs:
                       <h3>📁 Detailed Reports:</h3>
           """
           
-          for sarif_file in sorted(all_results.keys()):
-              html_file = sarif_file.replace('.sarif', '.html')
-              tool_name = all_results[sarif_file]['tool']
+          for report_file in sorted(all_results.keys()):
+              # 处理不同的文件扩展名
+              if report_file.endswith('.sarif'):
+                  html_file = report_file.replace('.sarif', '.html')
+              elif report_file.endswith('.json'):
+                  html_file = report_file.replace('.json', '.html')
+              else:
+                  html_file = report_file + '.html'
+              tool_name = all_results[report_file]['tool']
               html_summary += f'                      <a href="{html_file}" target="_blank">{tool_name}</a>\n'
           
           html_summary += """
@@ -289,6 +443,7 @@ jobs:
           name: sast_reports
           path: |
             *.sarif
+            *.json
             *.html
           if-no-files-found: ignore
           retention-days: 7
@@ -1063,8 +1218,7 @@ jobs:
           cmd_options: '-a -m 5'  # 移除 -I，使用默认的 Automation Framework
           fail_action: false
           allow_issue_writing: false
-          upload_artifact: false
-          # 不设置 artifact_name，因为 upload_artifact 为 false
+          artifact_name: 'zap-report'  # 使用有效的 artifact 名称（小写和连字符）
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
