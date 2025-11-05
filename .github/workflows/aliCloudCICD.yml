@@ -28,7 +28,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          args: detect --source . --verbose --report-format sarif --report-path gitleaks.sarif
+          path: .
+          report-format: sarif
+          report-path: gitleaks.sarif
 
       - name: Install SAST tools
         run: |
