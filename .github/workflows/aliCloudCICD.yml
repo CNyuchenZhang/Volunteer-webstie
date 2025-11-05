@@ -1018,17 +1018,53 @@ jobs:
           # 验证服务是否真的可用
           curl -fsS http://localhost:8001/api/v1/health/ || (echo "❌ user-service 未就绪" && exit 1)
 
+      - name: Prepare ZAP working directory
+        run: |
+          # 设置工作目录权限，确保 ZAP Docker 容器（以 root 运行）可以写入
+          # ZAP action 会将当前目录挂载到 Docker 容器的 /zap/wrk
+          # 由于容器以 root 运行，需要确保目录对所有用户可写
+          
+          # 创建 .zap 目录（如果不存在）
+          mkdir -p .zap/work
+          
+          # 设置工作目录权限（递归设置所有文件和目录）
+          # 使用 sudo 如果可用，否则使用普通 chmod
+          if command -v sudo &> /dev/null; then
+            sudo chmod -R 777 . || chmod -R 777 . || true
+            sudo chown -R $USER:$USER . || true
+          else
+            chmod -R 777 . || true
+          fi
+          
+          # 确保规则文件可读
+          chmod 644 .zap/rules.tsv || true
+          
+          # 创建 ZAP 配置文件目录并设置权限
+          mkdir -p .zap
+          chmod -R 777 .zap || true
+          
+          # 预先创建可能需要的文件并设置权限
+          touch zap.yaml zap.yaml.bak 2>/dev/null || true
+          chmod 666 zap.yaml zap.yaml.bak 2>/dev/null || true
+          
+          # 验证权限设置
+          echo "当前工作目录权限:"
+          ls -la . | head -10
+          echo ""
+          echo ".zap 目录权限:"
+          ls -la .zap/ 2>/dev/null || echo "目录不存在"
+
       - name: OWASP ZAP baseline scan (user-service)
         continue-on-error: true
         uses: zaproxy/action-baseline@v0.10.0
         with:
           target: 'http://localhost:8001'
           rules_file_name: '.zap/rules.tsv'
-          cmd_options: '-a -m 5'
+          cmd_options: '-a -m 5'  # 移除 -I，使用默认的 Automation Framework
           fail_action: false
           allow_issue_writing: false
           upload_artifact: false
-          artifact_name: 'zapReport'  # 如果 action 仍尝试上传，使用有效名称
+          # 不设置 artifact_name，因为 upload_artifact 为 false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -1188,7 +1224,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: zapReport
+          name: zap-report
           path: |
             report_html.html
             report_json.json
@@ -1371,18 +1407,106 @@ jobs:
                   # 解析 k6 JSON 结果
                   metrics = k6_data.get('metrics', {})
                   
+                  # 调试：打印 metrics 结构（仅显示关键字段）
+                  print(f"📊 Metrics 键: {list(metrics.keys())[:10]}")  # 只显示前10个键
+                  
                   # 提取关键指标
                   http_reqs = metrics.get('http_reqs', {})
                   http_req_duration = metrics.get('http_req_duration', {})
                   http_req_failed = metrics.get('http_req_failed', {})
                   
-                  total_requests = http_reqs.get('values', {}).get('count', 0)
-                  avg_duration = http_req_duration.get('values', {}).get('avg', 0)
-                  min_duration = http_req_duration.get('values', {}).get('min', 0)
-                  max_duration = http_req_duration.get('values', {}).get('max', 0)
-                  p95_duration = http_req_duration.get('values', {}).get('p(95)', 0)
-                  p99_duration = http_req_duration.get('values', {}).get('p(99)', 0)
-                  failed_rate = http_req_failed.get('values', {}).get('rate', 0) * 100
+                  # 调试：打印指标结构
+                  if http_reqs:
+                      print(f"📊 http_reqs 结构: {list(http_reqs.keys())}")
+                      if 'values' in http_reqs:
+                          print(f"📊 http_reqs.values 结构: {list(http_reqs['values'].keys())}")
+                  
+                  # k6 summary-export 格式：metrics.http_reqs.count (直接字段)
+                  # k6 JSON output 格式：metrics.http_reqs.values.count
+                  # 优先使用 summary-export 格式（直接字段），然后回退到 JSON output 格式
+                  if http_reqs:
+                      # 方式1: 直接 count (summary-export 格式，优先)
+                      if 'count' in http_reqs:
+                          total_requests = http_reqs['count']
+                          print(f"📊 使用 summary-export 格式: http_reqs.count = {total_requests}")
+                      # 方式2: values.count (JSON output 格式)
+                      elif 'values' in http_reqs and isinstance(http_reqs['values'], dict):
+                          total_requests = http_reqs['values'].get('count', 0)
+                          print(f"📊 使用 JSON output 格式: http_reqs.values.count = {total_requests}")
+                      else:
+                          # 如果都没有，尝试从其他字段计算或默认为 0
+                          total_requests = http_reqs.get('count', 0)
+                          if total_requests == 0:
+                              print(f"⚠️  无法从 http_reqs 提取 count，结构: {list(http_reqs.keys())}")
+                  else:
+                      total_requests = 0
+                      print("⚠️  http_reqs 不存在")
+                  
+                  # 提取响应时间指标
+                  # k6 的时间单位：summary-export 通常是毫秒，JSON output 是微秒
+                  def convert_to_ms(value):
+                      """将时间值转换为毫秒"""
+                      if value == 0:
+                          return 0
+                      # 如果值很大（> 10000），可能是微秒，转换为毫秒
+                      if value > 10000:
+                          return value / 1000
+                      # 如果值非常大（> 1000000），可能是纳秒，转换为毫秒
+                      elif value > 1000000:
+                          return value / 1000000
+                      # 否则假设已经是毫秒
+                      return value
+                  
+                  if http_req_duration:
+                      # 优先使用 summary-export 格式（直接字段），然后回退到 JSON output 格式
+                      if 'avg' in http_req_duration:
+                          # summary-export 格式（直接字段）
+                          avg_duration = convert_to_ms(http_req_duration.get('avg', 0))
+                          min_duration = convert_to_ms(http_req_duration.get('min', 0))
+                          max_duration = convert_to_ms(http_req_duration.get('max', 0))
+                          p95_duration = convert_to_ms(http_req_duration.get('p(95)', 0))
+                          p99_duration = convert_to_ms(http_req_duration.get('p(99)', 0))
+                          print(f"📊 使用 summary-export 格式提取响应时间")
+                      elif 'values' in http_req_duration and isinstance(http_req_duration['values'], dict):
+                          # JSON output 格式
+                          values = http_req_duration['values']
+                          avg_duration = convert_to_ms(values.get('avg', 0))
+                          min_duration = convert_to_ms(values.get('min', 0))
+                          max_duration = convert_to_ms(values.get('max', 0))
+                          p95_duration = convert_to_ms(values.get('p(95)', 0))
+                          p99_duration = convert_to_ms(values.get('p(99)', 0))
+                          print(f"📊 使用 JSON output 格式提取响应时间")
+                      else:
+                          # 默认值
+                          avg_duration = min_duration = max_duration = p95_duration = p99_duration = 0
+                          print(f"⚠️  无法从 http_req_duration 提取数据，结构: {list(http_req_duration.keys())}")
+                  else:
+                      avg_duration = min_duration = max_duration = p95_duration = p99_duration = 0
+                      print("⚠️  http_req_duration 不存在")
+                  
+                  # 提取失败率
+                  # 优先使用 summary-export 格式（直接字段），然后回退到 JSON output 格式
+                  if http_req_failed:
+                      if 'rate' in http_req_failed:
+                          # summary-export 格式（直接字段）
+                          failed_rate = http_req_failed['rate'] * 100
+                          print(f"📊 使用 summary-export 格式提取失败率: {failed_rate:.2f}%")
+                      elif 'values' in http_req_failed and isinstance(http_req_failed['values'], dict):
+                          # JSON output 格式
+                          failed_rate = http_req_failed['values'].get('rate', 0) * 100
+                          print(f"📊 使用 JSON output 格式提取失败率: {failed_rate:.2f}%")
+                      else:
+                          failed_rate = 0
+                          print(f"⚠️  无法从 http_req_failed 提取 rate，结构: {list(http_req_failed.keys())}")
+                  else:
+                      failed_rate = 0
+                      print("⚠️  http_req_failed 不存在")
+                  
+                  # 调试输出
+                  print(f"📊 解析结果:")
+                  print(f"   Total Requests: {total_requests}")
+                  print(f"   Avg Duration: {avg_duration:.2f}ms")
+                  print(f"   Failed Rate: {failed_rate:.2f}%")
                   
                   # 生成 HTML 汇总
                   html = f"""<!DOCTYPE html>
@@ -1523,23 +1647,33 @@ jobs:
             JMETER_BIN="jmeter"
           fi
           
+          # 验证 JMeter 版本
+          $JMETER_BIN --version || echo "⚠️  无法获取 JMeter 版本"
+          
           # 使用系统属性配置安全设置（最可靠的方法）
           echo "使用系统属性配置安全设置..."
+          # 注意：--suppressJMeterWarnings 在某些版本中不可用，移除它
           $JMETER_BIN -n -t tests/perf/jmeter_test.jmx -l jmeter.jtl \
             -Jxstream.security.allowXStreamType=org.apache.jmeter.save.ScriptWrapper \
             -Jxstream.security.allowXStreamType=org.apache.jmeter.save.ScriptWrapperBean \
             -Jxstream.security.allowXStreamType=org.apache.jmeter.save.ScriptWrapperBean2 \
             -Jxstream.security.allowXStreamType=org.apache.jmeter.save.ScriptWrapperBean3 \
-            --suppressJMeterWarnings 2>&1 || {
+            2>&1 | grep -v "WARN StatusConsoleListener" || true
+          
+          # 检查是否成功生成 JTL 文件
+          if [ ! -f jmeter.jtl ] || [ ! -s jmeter.jtl ]; then
             echo "⚠️  第一次尝试失败，使用更宽松的安全设置..."
             # 回退方案：允许所有类型（不推荐，但作为最后手段）
             $JMETER_BIN -n -t tests/perf/jmeter_test.jmx -l jmeter.jtl \
               -Jxstream.security.allowXStreamType=* \
-              --suppressJMeterWarnings 2>&1 || {
+              2>&1 | grep -v "WARN StatusConsoleListener" || true
+            
+            # 再次检查
+            if [ ! -f jmeter.jtl ] || [ ! -s jmeter.jtl ]; then
               echo "⚠️  JMeter 测试完全失败，显示错误信息："
-              $JMETER_BIN -n -t tests/perf/jmeter_test.jmx -l jmeter.jtl 2>&1 || true
-            }
-          }
+              $JMETER_BIN -n -t tests/perf/jmeter_test.jmx -l jmeter.jtl 2>&1 | grep -v "WARN StatusConsoleListener" || true
+            fi
+          fi
           
           # 如果 JTL 文件生成成功，生成 HTML 报告
           if [ -f jmeter.jtl ] && [ -s jmeter.jtl ]; then
