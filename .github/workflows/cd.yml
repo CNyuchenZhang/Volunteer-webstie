@@ -31,13 +31,36 @@ jobs:
             
             # 构建镜像
             echo "🔨 构建镜像..."
-            docker compose build
+            docker compose build --no-cache
             
             # 检查现有镜像
             echo "📋 检查现有镜像..."
             docker images | grep jsrgzyc || echo "⚠️  未找到镜像"
             
-            echo "✅ 镜像构建完成"
+            # 验证所有必需镜像都已构建
+            echo "🔍 验证镜像构建状态..."
+            required_images=(
+              "jsrgzyc/user-service:latest"
+              "jsrgzyc/activity-service:latest"
+              "jsrgzyc/notification-service:latest"
+              "jsrgzyc/frontend:latest"
+            )
+            
+            all_built=true
+            for image in "${required_images[@]}"; do
+              if docker image inspect "$image" >/dev/null 2>&1; then
+                echo "✅ $image 已构建"
+              else
+                echo "❌ $image 未构建"
+                all_built=false
+              fi
+            done
+            
+            if [ "$all_built" = false ]; then
+              echo "⚠️  部分镜像未构建，将在导入阶段尝试重新构建"
+            fi
+            
+            echo "✅ 镜像构建阶段完成"
 
   # 导入镜像到 containerd
   import:
@@ -62,15 +85,44 @@ jobs:
               "jsrgzyc/frontend:latest"
             )
             
+            # 镜像名到服务名的映射
+            declare -A image_to_service=(
+              ["jsrgzyc/user-service:latest"]="user-service"
+              ["jsrgzyc/activity-service:latest"]="activity-service"
+              ["jsrgzyc/notification-service:latest"]="notification-service"
+              ["jsrgzyc/frontend:latest"]="frontend-service"
+            )
+            
             for image in "${required_images[@]}"; do
               image_name=$(echo $image | cut -d'/' -f2 | cut -d':' -f1)
-              echo "导入 $image_name..."
-              if docker images | grep -q "$image"; then
-                docker save $image | ctr -n k8s.io images import -
+              service_name="${image_to_service[$image]}"
+              echo "导入 $image_name (服务: $service_name)..."
+              
+              # 检查镜像是否存在（使用 docker image inspect 更可靠）
+              if docker image inspect "$image" >/dev/null 2>&1; then
+                echo "📦 找到镜像 $image，开始导入..."
+                docker save "$image" | ctr -n k8s.io images import -
                 echo "✅ $image_name 导入成功"
               else
                 echo "❌ $image 镜像不存在"
-                exit 1
+                echo "🔍 检查 Docker 镜像列表..."
+                docker images | grep jsrgzyc || echo "未找到任何 jsrgzyc 镜像"
+                echo "🔍 尝试重新构建镜像 (服务: $service_name)..."
+                if [ -n "$service_name" ]; then
+                  docker compose build "$service_name" || echo "构建失败"
+                else
+                  echo "⚠️  无法确定服务名，尝试构建所有镜像..."
+                  docker compose build || echo "构建失败"
+                fi
+                # 再次检查
+                if docker image inspect "$image" >/dev/null 2>&1; then
+                  echo "✅ 镜像构建成功，开始导入..."
+                  docker save "$image" | ctr -n k8s.io images import -
+                  echo "✅ $image_name 导入成功"
+                else
+                  echo "❌ 镜像 $image 仍然不存在，部署失败"
+                  exit 1
+                fi
               fi
             done
             
