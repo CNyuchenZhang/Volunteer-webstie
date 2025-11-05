@@ -8,6 +8,14 @@ from rest_framework import status
 from rest_framework.authtoken.models import Token
 from .models import User, UserProfile
 
+# Test passwords - these are safe to hardcode in tests
+TEST_PASSWORD = 'testpass123'  # nosec B106
+OLD_PASSWORD = 'oldpass123'  # nosec B106
+NEW_PASSWORD = 'newpass123'  # nosec B106
+DIFFERENT_PASSWORD = 'differentpass123'  # nosec B106
+WRONG_PASSWORD = 'wrongpassword'  # nosec B106
+WRONG_OLD_PASSWORD = 'wrongpass'  # nosec B106
+
 
 class UserRegistrationTestCase(APITestCase):
     """测试用户注册功能"""
@@ -21,8 +29,8 @@ class UserRegistrationTestCase(APITestCase):
         data = {
             'username': 'testvolunteer',
             'email': 'volunteer@test.com',
-            'password': 'testpass123',
-            'password_confirm': 'testpass123',
+            'password': TEST_PASSWORD,  # nosec B106
+            'password_confirm': TEST_PASSWORD,  # nosec B106
             'first_name': 'Test',
             'last_name': 'Volunteer',
             'role': 'volunteer'
@@ -40,8 +48,8 @@ class UserRegistrationTestCase(APITestCase):
         data = {
             'username': 'testorganizer',
             'email': 'organizer@test.com',
-            'password': 'testpass123',
-            'password_confirm': 'testpass123',
+            'password': TEST_PASSWORD,  # nosec B106
+            'password_confirm': TEST_PASSWORD,  # nosec B106
             'first_name': 'Test',
             'last_name': 'Organizer',
             'role': 'organizer'
@@ -57,7 +65,7 @@ class UserRegistrationTestCase(APITestCase):
         User.objects.create_user(
             username='existing',
             email='existing@test.com',
-            password='testpass123',
+            password=TEST_PASSWORD,  # nosec B106
             first_name='Existing',
             last_name='User',
             role='volunteer'
@@ -67,8 +75,8 @@ class UserRegistrationTestCase(APITestCase):
         data = {
             'username': 'newuser',
             'email': 'existing@test.com',
-            'password': 'testpass123',
-            'password_confirm': 'testpass123',
+            'password': TEST_PASSWORD,  # nosec B106
+            'password_confirm': TEST_PASSWORD,  # nosec B106
             'first_name': 'New',
             'last_name': 'User',
             'role': 'volunteer'
@@ -83,8 +91,8 @@ class UserRegistrationTestCase(APITestCase):
         data = {
             'username': 'testuser',
             'email': 'test@test.com',
-            'password': 'testpass123',
-            'password_confirm': 'differentpass123',
+            'password': TEST_PASSWORD,  # nosec B106
+            'password_confirm': DIFFERENT_PASSWORD,  # nosec B106
             'first_name': 'Test',
             'last_name': 'User',
             'role': 'volunteer'
@@ -110,8 +118,8 @@ class UserRegistrationTestCase(APITestCase):
         data = {
             'username': 'testadmin',
             'email': 'admin@test.com',
-            'password': 'testpass123',
-            'password_confirm': 'testpass123',
+            'password': TEST_PASSWORD,  # nosec B106
+            'password_confirm': TEST_PASSWORD,  # nosec B106
             'first_name': 'Test',
             'last_name': 'Admin',
             'role': 'admin'
@@ -132,20 +140,20 @@ class UserLoginTestCase(APITestCase):
         self.user = User.objects.create_user(
             username='testuser',
             email='test@test.com',
-            password='testpass123',
+            password=TEST_PASSWORD,  # nosec B106
             first_name='Test',
             last_name='User',
             role='volunteer'
         )
         # 确保密码正确设置
-        self.user.set_password('testpass123')
+        self.user.set_password(TEST_PASSWORD)  # nosec B106
         self.user.save()
         
     def test_login_success(self):
         """测试登录成功"""
         data = {
             'email': 'test@test.com',
-            'password': 'testpass123'
+            'password': TEST_PASSWORD  # nosec B106
         }
         response = self.client.post(self.login_url, data, format='json')
         
@@ -158,7 +166,7 @@ class UserLoginTestCase(APITestCase):
         """测试错误的登录凭证"""
         data = {
             'email': 'test@test.com',
-            'password': 'wrongpassword'
+            'password': WRONG_PASSWORD  # nosec B106
         }
         response = self.client.post(self.login_url, data, format='json')
         
@@ -168,7 +176,7 @@ class UserLoginTestCase(APITestCase):
         """测试不存在的用户"""
         data = {
             'email': 'nonexistent@test.com',
-            'password': 'testpass123'
+            'password': TEST_PASSWORD  # nosec B106
         }
         response = self.client.post(self.login_url, data, format='json')
         
@@ -185,13 +193,13 @@ class UserProfileTestCase(APITestCase):
         self.user = User.objects.create_user(
             username='testuser',
             email='test@test.com',
-            password='testpass123',
+            password=TEST_PASSWORD,  # nosec B106
             first_name='Test',
             last_name='User',
             role='volunteer'
         )
         # 确保密码正确设置
-        self.user.set_password('testpass123')
+        self.user.set_password(TEST_PASSWORD)  # nosec B106
         self.user.save()
         
         # 创建token
@@ -243,7 +251,7 @@ class UserModelTestCase(TestCase):
         user = User.objects.create_user(
             username='testuser',
             email='test@test.com',
-            password='testpass123',
+            password=TEST_PASSWORD,  # nosec B106
             first_name='Test',
             last_name='User',
             role='volunteer'
@@ -251,7 +259,7 @@ class UserModelTestCase(TestCase):
         
         self.assertEqual(user.username, 'testuser')
         self.assertEqual(user.email, 'test@test.com')
-        self.assertTrue(user.check_password('testpass123'))
+        self.assertTrue(user.check_password(TEST_PASSWORD))  # nosec B106
         self.assertEqual(user.role, 'volunteer')
         
     def test_user_full_name(self):
@@ -259,7 +267,7 @@ class UserModelTestCase(TestCase):
         user = User.objects.create_user(
             username='testuser',
             email='test@test.com',
-            password='testpass123',
+            password=TEST_PASSWORD,  # nosec B106
             first_name='Test',
             last_name='User',
             role='volunteer'
@@ -272,7 +280,7 @@ class UserModelTestCase(TestCase):
         user = User.objects.create_user(
             username='testuser',
             email='test@test.com',
-            password='testpass123',
+            password=TEST_PASSWORD,  # nosec B106
             first_name='Test',
             last_name='User',
             role='volunteer'
@@ -285,7 +293,7 @@ class UserModelTestCase(TestCase):
         user = User.objects.create_user(
             username='testuser',
             email='test@test.com',
-            password='testpass123',
+            password=TEST_PASSWORD,  # nosec B106
             first_name='Test',
             last_name='User',
             role='volunteer'
@@ -312,7 +320,7 @@ class UserModelTestCase(TestCase):
         user = User.objects.create_user(
             username='testuser',
             email='test@test.com',
-            password='testpass123',
+            password=TEST_PASSWORD,  # nosec B106
             first_name='Test',
             last_name='User',
             role='volunteer'
@@ -337,7 +345,7 @@ class UserLogoutTestCase(APITestCase):
         self.user = User.objects.create_user(
             username='testuser',
             email='test@test.com',
-            password='testpass123',
+            password=TEST_PASSWORD,  # nosec B106
             first_name='Test',
             last_name='User',
             role='volunteer'
@@ -363,12 +371,12 @@ class PasswordChangeTestCase(APITestCase):
         self.user = User.objects.create_user(
             username='testuser',
             email='test@test.com',
-            password='oldpass123',
+            password=OLD_PASSWORD,  # nosec B106
             first_name='Test',
             last_name='User',
             role='volunteer'
         )
-        self.user.set_password('oldpass123')
+        self.user.set_password(OLD_PASSWORD)  # nosec B106
         self.user.save()
         self.token = Token.objects.create(user=self.user)
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token.key)
@@ -377,24 +385,24 @@ class PasswordChangeTestCase(APITestCase):
         """测试密码修改成功"""
         url = reverse('password-change')
         data = {
-            'old_password': 'oldpass123',
-            'new_password': 'newpass123',
-            'new_password_confirm': 'newpass123'
+            'old_password': OLD_PASSWORD,  # nosec B106
+            'new_password': NEW_PASSWORD,  # nosec B106
+            'new_password_confirm': NEW_PASSWORD  # nosec B106
         }
         response = self.client.post(url, data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         # 验证新密码有效
         self.user.refresh_from_db()
-        self.assertTrue(self.user.check_password('newpass123'))
+        self.assertTrue(self.user.check_password(NEW_PASSWORD))  # nosec B106
     
     def test_change_password_wrong_old_password(self):
         """测试旧密码错误"""
         url = reverse('password-change')
         data = {
-            'old_password': 'wrongpass',
-            'new_password': 'newpass123',
-            'new_password_confirm': 'newpass123'
+            'old_password': WRONG_OLD_PASSWORD,  # nosec B106
+            'new_password': NEW_PASSWORD,  # nosec B106
+            'new_password_confirm': NEW_PASSWORD  # nosec B106
         }
         response = self.client.post(url, data, format='json')
         
@@ -404,9 +412,9 @@ class PasswordChangeTestCase(APITestCase):
         """测试新密码确认不匹配"""
         url = reverse('password-change')
         data = {
-            'old_password': 'oldpass123',
-            'new_password': 'newpass123',
-            'new_password_confirm': 'differentpass'
+            'old_password': OLD_PASSWORD,  # nosec B106
+            'new_password': NEW_PASSWORD,  # nosec B106
+            'new_password_confirm': DIFFERENT_PASSWORD  # nosec B106
         }
         response = self.client.post(url, data, format='json')
         
@@ -421,7 +429,7 @@ class UserAvatarTestCase(APITestCase):
         self.user = User.objects.create_user(
             username='testuser',
             email='test@test.com',
-            password='testpass123',
+            password=TEST_PASSWORD,  # nosec B106
             first_name='Test',
             last_name='User',
             role='volunteer'
@@ -453,7 +461,7 @@ class UserStatsTestCase(APITestCase):
         self.user = User.objects.create_user(
             username='testuser',
             email='test@test.com',
-            password='testpass123',
+            password=TEST_PASSWORD,  # nosec B106
             first_name='Test',
             last_name='User',
             role='volunteer'
@@ -490,7 +498,7 @@ class UserAchievementsTestCase(APITestCase):
         self.user = User.objects.create_user(
             username='testuser',
             email='test@test.com',
-            password='testpass123',
+            password=TEST_PASSWORD,  # nosec B106
             first_name='Test',
             last_name='User',
             role='volunteer'
@@ -524,7 +532,7 @@ class UserActivitiesTestCase(APITestCase):
         self.user = User.objects.create_user(
             username='testuser',
             email='test@test.com',
-            password='testpass123',
+            password=TEST_PASSWORD,  # nosec B106
             first_name='Test',
             last_name='User',
             role='volunteer'
@@ -557,7 +565,7 @@ class UserNotificationsTestCase(APITestCase):
         self.user = User.objects.create_user(
             username='testuser',
             email='test@test.com',
-            password='testpass123',
+            password=TEST_PASSWORD,  # nosec B106
             first_name='Test',
             last_name='User',
             role='volunteer'
@@ -648,13 +656,13 @@ class GlobalStatsTestCase(APITestCase):
         User.objects.create_user(
             username='volunteer1',
             email='vol1@test.com',
-            password='testpass123',
+            password=TEST_PASSWORD,  # nosec B106
             role='volunteer'
         )
         User.objects.create_user(
             username='organizer1',
             email='org1@test.com',
-            password='testpass123',
+            password=TEST_PASSWORD,  # nosec B106
             role='organizer'
         )
         
@@ -674,7 +682,7 @@ class SearchUsersTestCase(APITestCase):
         self.user = User.objects.create_user(
             username='testuser',
             email='test@test.com',
-            password='testpass123',
+            password=TEST_PASSWORD,  # nosec B106
             first_name='Test',
             last_name='User',
             role='volunteer'
@@ -688,7 +696,7 @@ class SearchUsersTestCase(APITestCase):
         User.objects.create_user(
             username='john',
             email='john@test.com',
-            password='testpass123',
+            password=TEST_PASSWORD,  # nosec B106
             first_name='John',
             last_name='Doe',
             role='volunteer'
@@ -722,7 +730,7 @@ class CreateNotificationTestCase(APITestCase):
         self.user = User.objects.create_user(
             username='testuser',
             email='test@test.com',
-            password='testpass123',
+            password=TEST_PASSWORD,  # nosec B106
             first_name='Test',
             last_name='User',
             role='volunteer'
@@ -788,7 +796,7 @@ class SearchUsersExtendedTestCase(APITestCase):
         self.user = User.objects.create_user(
             username='testuser',
             email='test@test.com',
-            password='testpass123',
+            password=TEST_PASSWORD,  # nosec B106
             first_name='Test',
             last_name='User',
             role='volunteer',
@@ -801,7 +809,7 @@ class SearchUsersExtendedTestCase(APITestCase):
         User.objects.create_user(
             username='john',
             email='john@test.com',
-            password='testpass123',
+            password=TEST_PASSWORD,  # nosec B106
             first_name='John',
             last_name='Doe',
             role='volunteer',
@@ -810,7 +818,7 @@ class SearchUsersExtendedTestCase(APITestCase):
         User.objects.create_user(
             username='organizer1',
             email='org1@test.com',
-            password='testpass123',
+            password=TEST_PASSWORD,  # nosec B106
             first_name='Organizer',
             last_name='One',
             role='organizer',
@@ -860,7 +868,7 @@ class UserProfileUpdateTestCase(APITestCase):
         self.user = User.objects.create_user(
             username='testuser',
             email='test@test.com',
-            password='testpass123',
+            password=TEST_PASSWORD,  # nosec B106
             first_name='Test',
             last_name='User',
             role='volunteer'
@@ -895,7 +903,7 @@ class UserUpdateTestCase(APITestCase):
         self.user = User.objects.create_user(
             username='testuser',
             email='test@test.com',
-            password='testpass123',
+            password=TEST_PASSWORD,  # nosec B106
             first_name='Test',
             last_name='User',
             role='volunteer'
@@ -925,7 +933,7 @@ class UserProfileViewTestCase(APITestCase):
         self.user = User.objects.create_user(
             username='testuser',
             email='test@test.com',
-            password='testpass123',
+            password=TEST_PASSWORD,  # nosec B106
             first_name='Test',
             last_name='User',
             role='volunteer'

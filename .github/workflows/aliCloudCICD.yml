@@ -1220,7 +1220,7 @@ jobs:
           cmd_options: '-a -m 5'  # 移除 -I，使用默认的 Automation Framework
           fail_action: false
           allow_issue_writing: false
-          artifact_name: 'zap-report'  # 使用有效的 artifact 名称（小写和连字符）
+          # 注意：不设置 artifact_name，让 action 使用默认行为（可能会失败，但不影响后续步骤）
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
