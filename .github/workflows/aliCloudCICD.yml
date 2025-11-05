@@ -1561,40 +1561,67 @@ jobs:
                   # 解析 k6 JSON 结果
                   metrics = k6_data.get('metrics', {})
                   
-                  # 调试：打印 metrics 结构（仅显示关键字段）
-                  print(f"📊 Metrics 键: {list(metrics.keys())[:10]}")  # 只显示前10个键
+                  # 调试：打印完整的数据结构（前1000个字符）
+                  import json
+                  debug_str = json.dumps(k6_data, indent=2)[:2000]  # 只打印前2000个字符
+                  print(f"📊 k6_data 结构（前2000字符）:\n{debug_str}")
+                  print(f"📊 Metrics 键: {list(metrics.keys())[:20]}")  # 显示前20个键
                   
                   # 提取关键指标
                   http_reqs = metrics.get('http_reqs', {})
                   http_req_duration = metrics.get('http_req_duration', {})
                   http_req_failed = metrics.get('http_req_failed', {})
                   
-                  # 调试：打印指标结构
+                  # 调试：打印指标结构（完整）
+                  print(f"📊 http_reqs 类型: {type(http_reqs)}")
                   if http_reqs:
-                      print(f"📊 http_reqs 结构: {list(http_reqs.keys())}")
-                      if 'values' in http_reqs:
-                          print(f"📊 http_reqs.values 结构: {list(http_reqs['values'].keys())}")
-                  
-                  # k6 summary-export 格式：metrics.http_reqs.count (直接字段)
-                  # k6 JSON output 格式：metrics.http_reqs.values.count
-                  # 优先使用 summary-export 格式（直接字段），然后回退到 JSON output 格式
-                  if http_reqs:
-                      # 方式1: 直接 count (summary-export 格式，优先)
+                      print(f"📊 http_reqs 键: {list(http_reqs.keys())}")
+                      print(f"📊 http_reqs 内容: {json.dumps(http_reqs, indent=2)[:500]}")
+                      if 'values' in http_reqs and isinstance(http_reqs['values'], dict):
+                          print(f"📊 http_reqs.values 键: {list(http_reqs['values'].keys())}")
                       if 'count' in http_reqs:
-                          total_requests = http_reqs['count']
-                          print(f"📊 使用 summary-export 格式: http_reqs.count = {total_requests}")
-                      # 方式2: values.count (JSON output 格式)
-                      elif 'values' in http_reqs and isinstance(http_reqs['values'], dict):
-                          total_requests = http_reqs['values'].get('count', 0)
-                          print(f"📊 使用 JSON output 格式: http_reqs.values.count = {total_requests}")
+                          print(f"📊 http_reqs.count = {http_reqs['count']}")
+                  
+                  print(f"📊 http_req_duration 类型: {type(http_req_duration)}")
+                  if http_req_duration:
+                      print(f"📊 http_req_duration 键: {list(http_req_duration.keys())}")
+                      if 'avg' in http_req_duration:
+                          print(f"📊 http_req_duration.avg = {http_req_duration['avg']}")
+                  
+                  # k6 summary-export 格式：metrics.http_reqs.values.count 或 metrics.http_reqs.count
+                  # k6 JSON output 格式：metrics.http_reqs.values.count
+                  # 需要检查实际的数据结构
+                  total_requests = 0
+                  if http_reqs:
+                      # 尝试多种可能的路径
+                      if isinstance(http_reqs, dict):
+                          # 方式1: 直接 count (summary-export 可能格式)
+                          if 'count' in http_reqs:
+                              total_requests = http_reqs['count']
+                              print(f"📊 方式1: http_reqs.count = {total_requests}")
+                          # 方式2: values.count (JSON output 和 summary-export 常用格式)
+                          elif 'values' in http_reqs:
+                              if isinstance(http_reqs['values'], dict):
+                                  total_requests = http_reqs['values'].get('count', 0)
+                                  print(f"📊 方式2: http_reqs.values.count = {total_requests}")
+                              elif isinstance(http_reqs['values'], list) and len(http_reqs['values']) > 0:
+                                  # 如果 values 是列表，可能是时间序列数据
+                                  total_requests = len(http_reqs['values'])
+                                  print(f"📊 方式3: http_reqs.values (列表长度) = {total_requests}")
+                          # 方式3: 从 rate 计算（如果 rate 和时间窗口存在）
+                          elif 'rate' in http_reqs:
+                              # 尝试从 rate 估算，但这不是准确的方法
+                              print(f"⚠️  只有 rate 字段，无法准确计算 count")
+                              total_requests = 0
+                          else:
+                              # 打印完整结构以便调试
+                              print(f"⚠️  无法从 http_reqs 提取 count，完整结构: {json.dumps(http_reqs, indent=2)[:500]}")
                       else:
-                          # 如果都没有，尝试从其他字段计算或默认为 0
-                          total_requests = http_reqs.get('count', 0)
-                          if total_requests == 0:
-                              print(f"⚠️  无法从 http_reqs 提取 count，结构: {list(http_reqs.keys())}")
+                          print(f"⚠️  http_reqs 不是字典类型: {type(http_reqs)}")
                   else:
-                      total_requests = 0
-                      print("⚠️  http_reqs 不存在")
+                      print("⚠️  http_reqs 不存在或为空")
+                  
+                  print(f"📊 最终 total_requests = {total_requests}")
                   
                   # 提取响应时间指标
                   # k6 的时间单位：summary-export 通常是毫秒，JSON output 是微秒
@@ -1611,50 +1638,50 @@ jobs:
                       # 否则假设已经是毫秒
                       return value
                   
-                  if http_req_duration:
-                      # 优先使用 summary-export 格式（直接字段），然后回退到 JSON output 格式
-                      if 'avg' in http_req_duration:
-                          # summary-export 格式（直接字段）
-                          avg_duration = convert_to_ms(http_req_duration.get('avg', 0))
-                          min_duration = convert_to_ms(http_req_duration.get('min', 0))
-                          max_duration = convert_to_ms(http_req_duration.get('max', 0))
-                          p95_duration = convert_to_ms(http_req_duration.get('p(95)', 0))
-                          p99_duration = convert_to_ms(http_req_duration.get('p(99)', 0))
-                          print(f"📊 使用 summary-export 格式提取响应时间")
-                      elif 'values' in http_req_duration and isinstance(http_req_duration['values'], dict):
-                          # JSON output 格式
+                  # 提取响应时间指标
+                  avg_duration = min_duration = max_duration = p95_duration = p99_duration = 0
+                  if http_req_duration and isinstance(http_req_duration, dict):
+                      # 尝试多种可能的路径
+                      if 'values' in http_req_duration and isinstance(http_req_duration['values'], dict):
+                          # 最常见格式：values 字典
                           values = http_req_duration['values']
                           avg_duration = convert_to_ms(values.get('avg', 0))
                           min_duration = convert_to_ms(values.get('min', 0))
                           max_duration = convert_to_ms(values.get('max', 0))
-                          p95_duration = convert_to_ms(values.get('p(95)', 0))
-                          p99_duration = convert_to_ms(values.get('p(99)', 0))
-                          print(f"📊 使用 JSON output 格式提取响应时间")
+                          p95_duration = convert_to_ms(values.get('p(95)', values.get('p95', 0)))
+                          p99_duration = convert_to_ms(values.get('p(99)', values.get('p99', 0)))
+                          print(f"📊 使用 values 格式提取响应时间: avg={avg_duration:.2f}ms")
+                      elif 'avg' in http_req_duration:
+                          # 直接字段格式
+                          avg_duration = convert_to_ms(http_req_duration.get('avg', 0))
+                          min_duration = convert_to_ms(http_req_duration.get('min', 0))
+                          max_duration = convert_to_ms(http_req_duration.get('max', 0))
+                          p95_duration = convert_to_ms(http_req_duration.get('p(95)', http_req_duration.get('p95', 0)))
+                          p99_duration = convert_to_ms(http_req_duration.get('p(99)', http_req_duration.get('p99', 0)))
+                          print(f"📊 使用直接字段格式提取响应时间: avg={avg_duration:.2f}ms")
                       else:
-                          # 默认值
-                          avg_duration = min_duration = max_duration = p95_duration = p99_duration = 0
                           print(f"⚠️  无法从 http_req_duration 提取数据，结构: {list(http_req_duration.keys())}")
+                          print(f"📊 http_req_duration 内容: {json.dumps(http_req_duration, indent=2)[:500]}")
                   else:
-                      avg_duration = min_duration = max_duration = p95_duration = p99_duration = 0
-                      print("⚠️  http_req_duration 不存在")
+                      print(f"⚠️  http_req_duration 不存在或类型错误: {type(http_req_duration)}")
                   
                   # 提取失败率
-                  # 优先使用 summary-export 格式（直接字段），然后回退到 JSON output 格式
-                  if http_req_failed:
-                      if 'rate' in http_req_failed:
-                          # summary-export 格式（直接字段）
-                          failed_rate = http_req_failed['rate'] * 100
-                          print(f"📊 使用 summary-export 格式提取失败率: {failed_rate:.2f}%")
-                      elif 'values' in http_req_failed and isinstance(http_req_failed['values'], dict):
-                          # JSON output 格式
+                  failed_rate = 0
+                  if http_req_failed and isinstance(http_req_failed, dict):
+                      # 尝试多种可能的路径
+                      if 'values' in http_req_failed and isinstance(http_req_failed['values'], dict):
+                          # values 格式
                           failed_rate = http_req_failed['values'].get('rate', 0) * 100
-                          print(f"📊 使用 JSON output 格式提取失败率: {failed_rate:.2f}%")
+                          print(f"📊 使用 values 格式提取失败率: {failed_rate:.2f}%")
+                      elif 'rate' in http_req_failed:
+                          # 直接字段格式
+                          failed_rate = http_req_failed['rate'] * 100
+                          print(f"📊 使用直接字段格式提取失败率: {failed_rate:.2f}%")
                       else:
-                          failed_rate = 0
                           print(f"⚠️  无法从 http_req_failed 提取 rate，结构: {list(http_req_failed.keys())}")
+                          print(f"📊 http_req_failed 内容: {json.dumps(http_req_failed, indent=2)[:500]}")
                   else:
-                      failed_rate = 0
-                      print("⚠️  http_req_failed 不存在")
+                      print(f"⚠️  http_req_failed 不存在或类型错误: {type(http_req_failed)}")
                   
                   # 调试输出
                   print(f"📊 解析结果:")
