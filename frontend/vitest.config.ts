@@ -18,32 +18,42 @@ export default defineConfig({
       'build/',
       'tests/**', // 排除 Playwright E2E 测试
     ],
-    // 优化内存使用 - 使用更严格的内存配置
-    pool: 'forks',  // 使用 forks 而不是 threads，每个进程有独立的内存空间
+    // CI优化配置 - 在CI环境使用更快的配置
+    pool: process.env.CI ? 'threads' : 'forks',  // CI使用threads更快
     poolOptions: {
+      threads: {
+        // CI环境：使用多线程并发执行
+        singleThread: false,
+        isolate: false,  // 不隔离，共享内存更快
+        useAtomics: true,
+      },
       forks: {
-        singleFork: true,  // 使用单个 fork，减少内存占用
-        isolate: true,     // 隔离每个测试文件，避免内存泄漏累积
-        execArgv: ['--expose-gc', '--max-old-space-size=4096'],  // 启用垃圾回收并增加堆内存
+        // 本地环境：使用单fork保证稳定性
+        singleFork: true,
+        isolate: true,
+        execArgv: ['--expose-gc', '--max-old-space-size=4096'],
       },
     },
-    // 减少内存占用
-    testTimeout: 10000,     // 增加超时时间以适应 GC
-    hookTimeout: 5000,      // 减少 hook 超时时间
-    teardownTimeout: 5000,  // 添加清理超时
-    // 强制垃圾回收
-    forceRerunTriggers: [],
-    // 减少并发
+    // 超时配置
+    testTimeout: 10000,
+    hookTimeout: 5000,
+    teardownTimeout: 5000,
+    // CI环境启用并发
     sequence: {
       shuffle: false,
-      concurrent: false,  // 禁用并发，顺序执行测试
+      concurrent: process.env.CI ? true : false,  // CI启用并发
     },
-    // 启用隔离模式
-    isolate: true,
+    // CI环境不隔离以提高速度
+    isolate: process.env.CI ? false : true,
+    // 最大并发数（CI环境）
+    maxConcurrency: process.env.CI ? 5 : 1,
     // 优化覆盖率收集
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'json', 'html', 'lcov'],
+      // CI环境只生成必要的报告格式
+      reporter: process.env.CI 
+        ? ['json-summary', 'json']  // CI只需要JSON
+        : ['text', 'json', 'html', 'lcov'],  // 本地开发需要更多格式
       exclude: [
         'node_modules/',
         'src/test/',
@@ -57,15 +67,17 @@ export default defineConfig({
         'tests/**',
         'dist/',
         'build/',
-        '**/index.ts',      // 排除索引文件
-        '**/index.tsx',     // 排除索引文件
-        '**/*.stories.tsx', // 排除 Storybook 文件
+        '**/index.ts',
+        '**/index.tsx',
+        '**/*.stories.tsx',
       ],
       include: ['src/**/*.{ts,tsx}'],
-      // 优化内存使用
       all: false,           // 只收集被测试代码的覆盖率
-      clean: true,          // 清理旧的覆盖率数据
-      cleanOnRerun: true,   // 重新运行时清理
+      clean: true,
+      cleanOnRerun: true,
+      // CI环境跳过某些检查以提速
+      skipFull: process.env.CI ? true : false,
+      reportsDirectory: './coverage',
     },
   },
   resolve: {

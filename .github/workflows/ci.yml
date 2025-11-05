@@ -276,10 +276,24 @@ jobs:
             npm install
           fi
 
+      - name: Cache frontend test results
+        uses: actions/cache@v3
+        with:
+          path: |
+            frontend/node_modules/.vitest
+          key: vitest-${{ runner.os }}-${{ hashFiles('frontend/src/**/*.{ts,tsx}') }}
+          restore-keys: |
+            vitest-${{ runner.os }}-
+
       - name: Run frontend unit tests (with coverage)
+        continue-on-error: true
+        env:
+          CI: true
+          NODE_OPTIONS: "--max-old-space-size=8192 --expose-gc"
+          NODE_ENV: "test"
         run: |
           cd frontend
-          npm run test:unit:coverage || npm run test:unit || true
+          npm run test:ci || npm run test:unit || true
           
           # 验证覆盖率文件是否生成
           if [ ! -f "coverage/coverage-summary.json" ]; then
@@ -299,10 +313,6 @@ jobs:
           else
             echo "✅ 覆盖率文件已生成"
           fi
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--max-old-space-size=8192 --expose-gc"
-          NODE_ENV: "test"
 
       - name: Run user service tests
         run: |
