@@ -293,8 +293,9 @@ class ActivityViewSet(viewsets.ModelViewSet):
                     if response.status_code == 200:
                         admins = response.json()
                         print(f"Successfully fetched {len(admins)} admin(s) from user service")
-                except:
-                    pass
+                except (requests.exceptions.RequestException, requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+                    # Log the error but continue with fallback logic
+                    print(f"⚠️  Failed to fetch admin list from user service: {type(e).__name__}: {str(e)}")
                 
                 # 如果API调用失败，使用默认管理员ID列表
                 if not admins:
@@ -595,10 +596,12 @@ class ActivityParticipantViewSet(viewsets.ModelViewSet):
                 }
                 try:
                     requests.post('http://notification-service:8000/api/v1/notifications/', json=notification_data, timeout=5)
-                except requests.exceptions.RequestException:
-                    pass
-        except Exception:
-            pass
+                except requests.exceptions.RequestException as e:
+                    # Log notification failure but don't block the main operation
+                    print(f"⚠️  Failed to send notification: {type(e).__name__}: {str(e)}")
+        except Exception as e:
+            # Log unexpected errors but don't block the response
+            print(f"⚠️  Unexpected error in participant creation: {type(e).__name__}: {str(e)}")
         return response
     
     def update(self, request, *args, **kwargs):
