@@ -12,7 +12,8 @@
     "test": "playwright test",
     "test:unit": "vitest run --no-coverage",
     "test:unit:watch": "vitest",
-    "test:unit:coverage": "vitest run --coverage --reporter=verbose --pool=forks --poolOptions.forks.singleFork"
+    "test:unit:coverage": "vitest run --coverage",
+    "test:ci": "vitest run --coverage --reporter=basic --bail=1"
   },
   "dependencies": {
     "react": "^18.2.0",

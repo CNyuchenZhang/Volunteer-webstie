@@ -14,12 +14,38 @@ spec:
       labels:
         app: user-service
     spec:
+      # Pod 级别安全上下文
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      # 禁用自动挂载服务账号令牌
+      automountServiceAccountToken: false
       containers:
       - name: user-service
         image: jsrgzyc/user-service:latest
-        imagePullPolicy: Never
+        imagePullPolicy: Always
         ports:
         - containerPort: 8000
+        # 容器级别安全上下文
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false  # Django 需要写入日志
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop:
+            - ALL
+        # 资源限制
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
         livenessProbe:
           httpGet:
             path: /api/v1/health/
@@ -53,13 +79,38 @@ spec:
       labels:
         app: activity-service
     spec:
+      # Pod 级别安全上下文
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      # 禁用自动挂载服务账号令牌
+      automountServiceAccountToken: false
       containers:
       - name: activity-service
         image: jsrgzyc/activity-service:latest
-        imagePullPolicy: Never
+        imagePullPolicy: Always
         ports:
-        
         - containerPort: 8000
+        # 容器级别安全上下文
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false  # Django 需要写入日志
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop:
+            - ALL
+        # 资源限制
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
         livenessProbe:
           httpGet:
             path: /api/v1/health/
@@ -93,12 +144,38 @@ spec:
       labels:
         app: notification-service
     spec:
+      # Pod 级别安全上下文
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      # 禁用自动挂载服务账号令牌
+      automountServiceAccountToken: false
       containers:
       - name: notification-service
         image: jsrgzyc/notification-service:latest
-        imagePullPolicy: Never
+        imagePullPolicy: Always
         ports:
         - containerPort: 8000
+        # 容器级别安全上下文
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false  # Django 需要写入日志
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop:
+            - ALL
+        # 资源限制
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
         livenessProbe:
           httpGet:
             path: /api/v1/health/

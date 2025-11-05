@@ -1,18 +1,13 @@
-name: 🚀 Volunteer Platform CI/CD (DISABLED)
+name: 🔍 Continuous Integration
 
-# WORKFLOW DISABLED - Replaced by ci.yml and cd.yml
-# To re-enable: change branch to "main"
 on:
   pull_request:
-    branches: [ "workflow-disabled-never-trigger" ]
+    branches: [ "main" ]
     types: [opened, synchronize, reopened]
-  push:
-    branches: [ "workflow-disabled-never-trigger" ]
 
 jobs:
-  # 代码与依赖安全扫描（PR）
+  # 代码与依赖安全扫描
   sast:
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout code
@@ -119,12 +114,6 @@ jobs:
                   
                   # 生成单个工具的 HTML 报告
                   html_file = sarif_file.replace('.sarif', '.html')
-                  severity_colors = {
-                      'error': '#dc3545',
-                      'warning': '#fd7e14',
-                      'note': '#ffc107',
-                      'none': '#6c757d'
-                  }
                   
                   html = f"""<!DOCTYPE html>
           <html lang="en">
@@ -439,6 +428,7 @@ jobs:
           with open('sast-summary.html', 'w', encoding='utf-8') as f:
               f.write(html_summary)
           print("✅ Generated sast-summary.html")
+          print("✅ SAST report generation complete")
           PYTHON_SCRIPT
 
       - name: Upload SAST artifacts
@@ -452,9 +442,8 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # 单元测试与覆盖率（PR）
+  # 单元测试与覆盖率
   unit:
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-22.04
     needs: [sast]
     services:
@@ -478,10 +467,11 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'  # 升级到 Node.js 20，内存管理更好
+          node-version: '20'
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
@@ -514,6 +504,15 @@ jobs:
             npm install @rollup/rollup-linux-x64-musl@^4.52.5 --save-optional --legacy-peer-deps || echo "⚠️  手动安装失败"
           fi
 
+      - name: Cache frontend test results
+        uses: actions/cache@v3
+        with:
+          path: |
+            frontend/node_modules/.vitest
+          key: vitest-${{ runner.os }}-${{ hashFiles('frontend/src/**/*.{ts,tsx}') }}
+          restore-keys: |
+            vitest-${{ runner.os }}-
+
       - name: Run frontend unit tests (with coverage)
         run: |
           cd frontend
@@ -521,11 +520,12 @@ jobs:
           # 使用更保守的内存设置和更短的超时时间
           npm run test:unit:coverage || npm run test:unit || true
           
-          # 验证覆盖率文件是否生成
-          if [ ! -f "coverage/coverage-summary.json" ]; then
+          # 验证覆盖率文件是否生成（检查多个可能的路径）
+          COVERAGE_FILE="coverage/coverage-summary.json"
+          if [ ! -f "$COVERAGE_FILE" ]; then
             echo "⚠️  覆盖率文件未生成，创建一个最小的覆盖率文件"
             mkdir -p coverage
-            cat > coverage/coverage-summary.json << 'EOF'
+            cat > "$COVERAGE_FILE" << 'EOF'
           {
             "total": {
               "lines": {"total": 0, "covered": 0, "skipped": 0, "pct": 0},
@@ -537,17 +537,33 @@ jobs:
           EOF
             echo "✅ 已创建占位符覆盖率文件（测试可能失败，覆盖率为0%）"
           else
-            echo "✅ 覆盖率文件已生成"
+            echo "✅ 覆盖率文件已生成: $COVERAGE_FILE"
             # 显示覆盖率文件内容的前几行
-            head -n 20 coverage/coverage-summary.json || true
+            head -n 20 "$COVERAGE_FILE" || true
+            # 显示文件大小
+            ls -lh "$COVERAGE_FILE" || true
           fi
+          
+          # 检查 HTML 报告是否生成
+          if [ -f "coverage/index.html" ]; then
+            echo "✅ HTML 覆盖率报告已生成: coverage/index.html"
+            ls -lh coverage/index.html || true
+          else
+            echo "⚠️  HTML 覆盖率报告未生成"
+          fi
+          
+          # 列出 coverage 目录下的所有文件（用于调试）
+          echo "📁 Coverage 目录内容:"
+          ls -la coverage/ || echo "coverage 目录不存在"
+          
+          cd ..
         continue-on-error: true
         env:
           NODE_OPTIONS: "--max-old-space-size=8192 --expose-gc"
           NODE_ENV: "test"
           UV_THREADPOOL_SIZE: "2"  # 限制线程池大小，减少内存占用
 
-      - name: Run user service tests (with coverage)
+      - name: Run user service tests
         run: |
           cd services/user
           python manage.py migrate --settings=user_service.settings.base
@@ -557,7 +573,7 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
 
-      - name: Run activity service tests (with coverage)
+      - name: Run activity service tests
         run: |
           cd services/activity
           python manage.py migrate --settings=activity_service.settings.base
@@ -567,7 +583,7 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
 
-      - name: Run notification service tests (with coverage)
+      - name: Run notification service tests
         run: |
           cd services/notification
           python manage.py migrate --settings=notification_service.settings
@@ -576,39 +592,36 @@ jobs:
           coverage html -d ../../coverage-notification-html
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
-        
+
       - name: Check coverage threshold
         continue-on-error: true
         run: |
-          python - << 'PY'
+          python3 << 'PYTHON_SCRIPT'
           import xml.etree.ElementTree as ET
           import json
           import os
-          import sys
           
-          # 后端服务覆盖率
-          files = [
-            'coverage-user.xml',
-            'coverage-activity.xml',
-            'coverage-notification.xml'
-          ]
           total_covered = 0
           total_lines = 0
           
-          for f in files:
-              try:
-                  tree = ET.parse(f)
-                  cov = tree.getroot().attrib
-                  total_covered += int(cov.get('lines-covered', 0))
-                  total_lines += int(cov.get('lines-valid', 0))
-              except Exception as e:
-                  print(f"Warning: Could not parse {f}: {e}")
+          # 后端服务覆盖率
+          for xml_file in ['coverage-user.xml', 'coverage-activity.xml', 'coverage-notification.xml']:
+              if os.path.exists(xml_file):
+                  try:
+                      tree = ET.parse(xml_file)
+                      root = tree.getroot()
+                      covered = int(root.attrib.get('lines-covered', 0))
+                      lines = int(root.attrib.get('lines-valid', 0))
+                      total_covered += covered
+                      total_lines += lines
+                  except Exception as e:
+                      print(f"⚠️  Could not parse {xml_file}: {e}")
           
           # 前端覆盖率
-          frontend_coverage_file = 'frontend/coverage/coverage-summary.json'
-          if os.path.exists(frontend_coverage_file):
+          frontend_file = 'frontend/coverage/coverage-summary.json'
+          if os.path.exists(frontend_file):
               try:
-                  with open(frontend_coverage_file, 'r', encoding='utf-8') as f:
+                  with open(frontend_file, 'r', encoding='utf-8') as f:
                       frontend_data = json.load(f)
                   
                   frontend_total = frontend_data.get('total', {})
@@ -631,7 +644,7 @@ jobs:
               print("This is a warning and will not block the CI pipeline.")
           else:
               print(f"✅ Coverage meets target: {pct:.2f}%")
-          PY
+          PYTHON_SCRIPT
 
       - name: Generate combined coverage HTML report
         continue-on-error: true
@@ -640,7 +653,6 @@ jobs:
           import xml.etree.ElementTree as ET
           import json
           import os
-          import glob
           
           # 解析所有覆盖率 XML 文件
           coverage_data = {}
@@ -667,12 +679,30 @@ jobs:
                       total_covered += covered
                       total_lines += lines
                   except Exception as e:
-                      print(f"Warning: Could not parse {xml_file}: {e}")
+                      print(f"⚠️  Could not parse {xml_file}: {e}")
           
           # 前端覆盖率（从 Vitest coverage 报告）
           frontend_coverage_file = 'frontend/coverage/coverage-summary.json'
+          print(f"📂 查找前端覆盖率文件: {frontend_coverage_file}")
+          print(f"📂 当前工作目录: {os.getcwd()}")
+          print(f"📂 文件是否存在: {os.path.exists(frontend_coverage_file)}")
+          
+          # 如果文件不存在，尝试查找其他可能的路径
+          if not os.path.exists(frontend_coverage_file):
+              alternative_paths = [
+                  'frontend/coverage-summary.json',
+                  'coverage/coverage-summary.json',
+                  'coverage-summary.json'
+              ]
+              for alt_path in alternative_paths:
+                  if os.path.exists(alt_path):
+                      print(f"✅ 在备用路径找到文件: {alt_path}")
+                      frontend_coverage_file = alt_path
+                      break
+          
           if os.path.exists(frontend_coverage_file):
               try:
+                  print(f"✅ 读取前端覆盖率文件: {frontend_coverage_file}")
                   with open(frontend_coverage_file, 'r', encoding='utf-8') as f:
                       frontend_data = json.load(f)
                   
@@ -819,18 +849,6 @@ jobs:
           print("✅ Generated coverage-summary.html")
           PYTHON_SCRIPT
 
-      - name: Upload coverage artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage_reports
-          path: |
-            coverage-*.xml
-            coverage-*-html/
-            coverage-summary.html
-            frontend/coverage/
-          if-no-files-found: ignore
-          retention-days: 7
-
       - name: Run frontend build test
         run: |
           cd frontend
@@ -846,19 +864,30 @@ jobs:
           npm run build
           echo "✅ Frontend build successful"
 
-  # 集成与端到端测试（PR）
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage_reports
+          path: |
+            coverage-*.xml
+            coverage-*-html/
+            coverage-summary.html
+            frontend/coverage/**
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # 集成测试
   integration:
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-22.04
     needs: [unit]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Start stack for integration tests
+      - name: Start test environment
         run: docker compose -f docker-compose.test.yml up -d --build
 
-      - name: Wait for services health
+      - name: Wait for services
         run: |
           for i in {1..60}; do
             curl -fsS http://localhost:8001/api/v1/health/ && \
@@ -867,49 +896,34 @@ jobs:
           done
           exit 1
 
-      - name: Install Newman and Playwright
+      - name: Install test tools
         run: |
           sudo npm -g i newman
-          cd frontend
-          # 尝试使用 npm ci 进行快速、可靠的安装
-          if npm ci; then
-            echo "✅ npm ci 成功"
-          else
-            echo "⚠️ npm ci 失败，回退到 npm install"
-            npm install
-          fi
-          # 验证 Rollup 可选依赖（已在 package.json 中声明）
-          if [ ! -d "node_modules/@rollup/rollup-linux-x64-gnu" ] && [ ! -d "node_modules/rollup/node_modules/@rollup/rollup-linux-x64-gnu" ]; then
-            echo "⚠️ Rollup 可选依赖未找到，尝试手动安装（npm 可选依赖 bug）..."
-            npm install @rollup/rollup-linux-x64-gnu@^4.52.5 --save-optional --legacy-peer-deps || echo "⚠️  手动安装失败"
-            npm install @rollup/rollup-linux-x64-musl@^4.52.5 --save-optional --legacy-peer-deps || echo "⚠️  手动安装失败"
-          else
-            echo "✅ Rollup 可选依赖已安装"
-          fi
-          cd ..
+          cd frontend && npm ci && cd ..
           npx playwright install --with-deps
 
-      - name: Run Postman collection (API integration)
+      - name: Run API tests
         run: |
           newman run tests/postman_collection.json \
             --environment tests/postman_env.json \
             --reporters cli,html \
             --reporter-html-export newman-report.html
 
-      - name: Run Playwright E2E
-        run: npm test --prefix frontend -- --reporter=html --output=playwright-report || true
+      - name: Run E2E tests
+        run: npm test --prefix frontend -- --reporter=html || true
 
       - name: Upload integration artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: integration_artifacts
+          name: integration_reports
           path: |
             newman-report.html
             frontend/playwright-report
+          if-no-files-found: ignore
+          retention-days: 7
 
-  # 容器镜像与K8s清单扫描（PR）
+  # 容器镜像与K8s清单扫描
   container_iac_scan:
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-22.04
     needs: [unit]
     steps:
@@ -1165,12 +1179,329 @@ jobs:
         continue-on-error: true
         run: |
           pip install checkov
+          # 生成 CLI 和 JSON 输出
           checkov -d . --framework dockerfile --output cli --output-file-path checkov-dockerfile.txt || true
+          checkov -d . --framework dockerfile --output json --output-file-path checkov-dockerfile.json || true
 
       - name: Checkov scan (K8s manifests)
         continue-on-error: true
         run: |
+          # 生成 CLI 和 JSON 输出
           checkov -d k8s --framework kubernetes --output cli --output-file-path checkov-k8s.txt || true
+          checkov -d k8s --framework kubernetes --output json --output-file-path checkov-k8s.json || true
+
+      - name: Generate Checkov HTML reports
+        continue-on-error: true
+        run: |
+          python3 << 'PYTHON_SCRIPT'
+          import json
+          import os
+          import glob
+          
+          def parse_checkov_json(json_file):
+              """解析 Checkov JSON 输出文件"""
+              try:
+                  with open(json_file, 'r', encoding='utf-8') as f:
+                      data = json.load(f)
+                  
+                  # Checkov JSON 格式：{"summary": {...}, "results": {"failed_checks": [...], "passed_checks": [...]}}
+                  summary = data.get('summary', {})
+                  results = data.get('results', {})
+                  
+                  failed_checks = results.get('failed_checks', [])
+                  passed_checks = results.get('passed_checks', [])
+                  
+                  # 按严重性分类
+                  checks_by_severity = {
+                      'CRITICAL': [],
+                      'HIGH': [],
+                      'MEDIUM': [],
+                      'LOW': [],
+                      'INFO': []
+                  }
+                  
+                  for check in failed_checks:
+                      severity = check.get('severity', 'INFO')
+                      checks_by_severity.get(severity, checks_by_severity['INFO']).append(check)
+                  
+                  return {
+                      'summary': summary,
+                      'failed_checks': failed_checks,
+                      'passed_checks': passed_checks,
+                      'checks_by_severity': checks_by_severity,
+                      'total_failed': len(failed_checks),
+                      'total_passed': len(passed_checks)
+                  }
+              except Exception as e:
+                  print(f"⚠️  解析 {json_file} 时出错: {e}")
+                  return None
+          
+          def generate_checkov_html(json_file, parsed_data):
+              """生成 Checkov HTML 报告"""
+              if not parsed_data:
+                  return
+              
+              html_file = json_file.replace('.json', '.html')
+              scan_type = 'Dockerfile' if 'dockerfile' in json_file.lower() else 'Kubernetes'
+              
+              summary = parsed_data['summary']
+              failed_checks = parsed_data['failed_checks']
+              passed_checks = parsed_data['passed_checks']
+              checks_by_severity = parsed_data['checks_by_severity']
+              
+              total_failed = parsed_data['total_failed']
+              total_passed = parsed_data['total_passed']
+              total_checks = total_failed + total_passed
+              
+              # 统计各严重性数量
+              critical_count = len(checks_by_severity['CRITICAL'])
+              high_count = len(checks_by_severity['HIGH'])
+              medium_count = len(checks_by_severity['MEDIUM'])
+              low_count = len(checks_by_severity['LOW'])
+              info_count = len(checks_by_severity['INFO'])
+              
+              html = f"""<!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>Checkov Security Scan - {scan_type}</title>
+              <style>
+                  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+                  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #f5f7fa; padding: 20px; line-height: 1.6; }}
+                  .container {{ max-width: 1400px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; }}
+                  header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; }}
+                  h1 {{ font-size: 28px; margin-bottom: 10px; }}
+                  .subtitle {{ opacity: 0.9; }}
+                  .summary {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; padding: 20px; background: #f8f9fa; }}
+                  .stat-card {{ background: white; padding: 20px; border-radius: 6px; border-left: 4px solid #667eea; }}
+                  .stat-card.critical {{ border-left-color: #dc3545; }}
+                  .stat-card.high {{ border-left-color: #fd7e14; }}
+                  .stat-card.medium {{ border-left-color: #ffc107; }}
+                  .stat-card.low {{ border-left-color: #28a745; }}
+                  .stat-card.info {{ border-left-color: #6c757d; }}
+                  .stat-card.passed {{ border-left-color: #28a745; }}
+                  .stat-number {{ font-size: 32px; font-weight: bold; margin-bottom: 5px; }}
+                  .stat-label {{ color: #6c757d; font-size: 14px; }}
+                  .checks-table {{ width: 100%; border-collapse: collapse; }}
+                  .checks-table th {{ background: #495057; color: white; padding: 12px; text-align: left; font-weight: 600; }}
+                  .checks-table td {{ padding: 12px; border-bottom: 1px solid #e9ecef; }}
+                  .checks-table tr:hover {{ background: #f8f9fa; }}
+                  .severity-badge {{ display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; }}
+                  .severity-critical {{ background: #dc3545; color: white; }}
+                  .severity-high {{ background: #fd7e14; color: white; }}
+                  .severity-medium {{ background: #ffc107; color: #212529; }}
+                  .severity-low {{ background: #28a745; color: white; }}
+                  .severity-info {{ background: #6c757d; color: white; }}
+                  .file-path {{ font-family: 'Courier New', monospace; font-size: 13px; color: #667eea; }}
+                  .content {{ padding: 20px; }}
+                  .no-issues {{ text-align: center; padding: 40px; color: #28a745; font-size: 18px; }}
+                  .check-description {{ max-width: 400px; }}
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <header>
+                      <h1>🛡️ Checkov Security Scan Report</h1>
+                      <div class="subtitle">{scan_type} Configuration Analysis</div>
+                  </header>
+                  
+                  <div class="summary">
+                      <div class="stat-card">
+                          <div class="stat-number">{total_failed}</div>
+                          <div class="stat-label">Failed Checks</div>
+                      </div>
+                      <div class="stat-card passed">
+                          <div class="stat-number">{total_passed}</div>
+                          <div class="stat-label">Passed Checks</div>
+                      </div>
+                      <div class="stat-card critical">
+                          <div class="stat-number">{critical_count}</div>
+                          <div class="stat-label">Critical</div>
+                      </div>
+                      <div class="stat-card high">
+                          <div class="stat-number">{high_count}</div>
+                          <div class="stat-label">High</div>
+                      </div>
+                      <div class="stat-card medium">
+                          <div class="stat-number">{medium_count}</div>
+                          <div class="stat-label">Medium</div>
+                      </div>
+                      <div class="stat-card low">
+                          <div class="stat-number">{low_count}</div>
+                          <div class="stat-label">Low</div>
+                      </div>
+                      <div class="stat-card info">
+                          <div class="stat-number">{info_count}</div>
+                          <div class="stat-label">Info</div>
+                      </div>
+                  </div>
+                  
+                  <div class="content">
+          """
+              
+              if failed_checks:
+                  # 按严重性排序
+                  severity_order = {'CRITICAL': 0, 'HIGH': 1, 'MEDIUM': 2, 'LOW': 3, 'INFO': 4}
+                  failed_checks_sorted = sorted(failed_checks, key=lambda x: severity_order.get(x.get('severity', 'INFO'), 99))
+                  
+                  html += """
+                      <h2>Failed Security Checks</h2>
+                      <table class="checks-table">
+                          <thead>
+                              <tr>
+                                  <th>Check ID</th>
+                                  <th>Severity</th>
+                                  <th>File</th>
+                                  <th>Line</th>
+                                  <th>Description</th>
+                              </tr>
+                          </thead>
+                          <tbody>
+                      """
+                  
+                  for check in failed_checks_sorted:
+                      check_id = check.get('check_id', 'N/A')
+                      severity = check.get('severity', 'INFO')
+                      file_path = check.get('file_path', 'N/A')
+                      file_line_range = check.get('file_line_range', [])
+                      line_info = f"{file_line_range[0]}-{file_line_range[-1]}" if file_line_range else 'N/A'
+                      description = check.get('check_name', check.get('check_id', 'N/A'))
+                      guideline = check.get('guideline', '')
+                      
+                      severity_class = f'severity-{severity.lower()}'
+                      
+                      html += f"""
+                              <tr>
+                                  <td class="file-path">{check_id}</td>
+                                  <td><span class="severity-badge {severity_class}">{severity}</span></td>
+                                  <td class="file-path">{file_path}</td>
+                                  <td>{line_info}</td>
+                                  <td class="check-description">
+                                      <strong>{description}</strong>
+                                      {f'<br><small style="color: #6c757d;">{guideline[:200]}</small>' if guideline else ''}
+                                  </td>
+                              </tr>
+                      """
+                  
+                  html += """
+                          </tbody>
+                      </table>
+                      """
+              else:
+                  html += '<div class="no-issues">✅ No security issues found!</div>'
+              
+              html += """
+                  </div>
+              </div>
+          </body>
+          </html>
+          """
+              
+              with open(html_file, 'w', encoding='utf-8') as f:
+                  f.write(html)
+              print(f"✅ Generated {html_file}")
+          
+          # 处理所有 Checkov JSON 文件
+          for json_file in glob.glob('checkov-*.json'):
+              print(f"📄 Processing {json_file}...")
+              parsed_data = parse_checkov_json(json_file)
+              if parsed_data:
+                  generate_checkov_html(json_file, parsed_data)
+              else:
+                  print(f"⚠️  跳过 {json_file}（无法解析）")
+          
+          # 生成汇总报告
+          all_checks = []
+          for json_file in glob.glob('checkov-*.json'):
+              parsed_data = parse_checkov_json(json_file)
+              if parsed_data:
+                  scan_type = 'Dockerfile' if 'dockerfile' in json_file.lower() else 'Kubernetes'
+                  all_checks.append({
+                      'type': scan_type,
+                      'file': json_file,
+                      'data': parsed_data
+                  })
+          
+          if all_checks:
+              total_failed = sum(c['data']['total_failed'] for c in all_checks)
+              total_passed = sum(c['data']['total_passed'] for c in all_checks)
+              
+              html_summary = f"""<!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>Checkov Security Scan Summary</title>
+              <style>
+                  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+                  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #f5f7fa; padding: 20px; }}
+                  .container {{ max-width: 1200px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; }}
+                  header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; }}
+                  h1 {{ font-size: 28px; margin-bottom: 10px; }}
+                  .summary {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; padding: 30px; }}
+                  .card {{ background: #f8f9fa; border-radius: 8px; padding: 20px; border-left: 4px solid #667eea; }}
+                  .card h3 {{ color: #333; margin-bottom: 15px; font-size: 18px; }}
+                  .stat-number {{ font-size: 48px; font-weight: bold; color: #667eea; margin: 10px 0; }}
+                  .stat-label {{ color: #6c757d; font-size: 14px; }}
+                  .links {{ padding: 20px; background: #f8f9fa; border-top: 1px solid #e0e0e0; }}
+                  .links a {{ display: inline-block; margin: 5px 10px 5px 0; padding: 8px 16px; background: #667eea; color: white; text-decoration: none; border-radius: 4px; }}
+                  .links a:hover {{ background: #5568d3; }}
+                  .card.has-issues {{ border-left-color: #dc3545; }}
+                  .card.no-issues {{ border-left-color: #28a745; }}
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <header>
+                      <h1>🛡️ Checkov Security Scan Summary</h1>
+                      <p>Total Failed: {total_failed} | Total Passed: {total_passed}</p>
+                  </header>
+                  
+                  <div class="summary">
+          """
+              
+              for check in all_checks:
+                  scan_type = check['type']
+                  data = check['data']
+                  failed = data['total_failed']
+                  passed = data['total_passed']
+                  card_class = 'has-issues' if failed > 0 else 'no-issues'
+                  html_file = check['file'].replace('.json', '.html')
+                  
+                  html_summary += f"""
+                      <div class="card {card_class}">
+                          <h3>{scan_type} Scan</h3>
+                          <div class="stat-number">{failed}</div>
+                          <div class="stat-label">Failed Checks</div>
+                          <div style="margin-top: 10px; color: #6c757d;">Passed: {passed}</div>
+                      </div>
+                  """
+              
+              html_summary += """
+                  </div>
+                  
+                  <div class="links">
+                      <h3>📁 Detailed Reports:</h3>
+          """
+              
+              for check in all_checks:
+                  html_file = check['file'].replace('.json', '.html')
+                  scan_type = check['type']
+                  html_summary += f'                      <a href="{html_file}" target="_blank">{scan_type} Report</a>\n'
+              
+              html_summary += """
+                  </div>
+              </div>
+          </body>
+          </html>
+          """
+              
+              with open('checkov-summary.html', 'w', encoding='utf-8') as f:
+                  f.write(html_summary)
+              print("✅ Generated checkov-summary.html")
+          
+          PYTHON_SCRIPT
 
       - name: Upload scan results
         if: always()
@@ -1181,12 +1512,13 @@ jobs:
             trivy-*.json
             trivy-*.html
             checkov-*.txt
+            checkov-*.json
+            checkov-*.html
           if-no-files-found: ignore
           retention-days: 7
 
-  # DAST（PR）：对本地集成环境进行基线动态扫描
+  # DAST：对本地集成环境进行基线动态扫描
   dast:
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-22.04
     needs: [integration]
     permissions:
@@ -1429,9 +1761,8 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # 性能测试（PR），使用接近生产的进程模型
-  perf:
-    if: github.event_name == 'pull_request'
+  # 性能测试，使用接近生产的进程模型
+  performance:
     runs-on: ubuntu-22.04
     needs: [integration]
     steps:
@@ -2130,320 +2461,3 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # 部署阶段 - 推送到main分支时运行
-  # 1. 准备和构建镜像
-  prepare_and_build:
-    if: github.event_name == 'push'
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Prepare and build images
-        uses: appleboy/ssh-action@v0.1.10
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.aliCloud }}
-          script: |
-            echo "🚀 开始部署 Volunteer Platform..."
-            
-            # 进入项目目录
-            cd /home/Volunteer-website
-            
-            # 更新代码
-            echo "📥 更新代码..."
-            git pull
-            
-            # 构建镜像
-            echo "🔨 构建镜像..."
-            docker compose build
-            
-            # 检查现有镜像
-            echo "📋 检查现有镜像..."
-            docker images | grep jsrgzyc || echo "⚠️  未找到镜像"
-            
-            echo "✅ 镜像构建完成"
-
-  # 2. 导入镜像到 containerd
-  import_images:
-    if: github.event_name == 'push'
-    runs-on: ubuntu-22.04
-    needs: [prepare_and_build]
-    steps:
-      - name: Import images to containerd
-        uses: appleboy/ssh-action@v0.1.10
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.aliCloud }}
-          script: |
-            cd /home/Volunteer-website
-            
-            echo "📦 导入镜像到containerd..."
-            
-            required_images=(
-              "jsrgzyc/user-service:latest"
-              "jsrgzyc/activity-service:latest"
-              "jsrgzyc/notification-service:latest"
-              "jsrgzyc/frontend:latest"
-            )
-            
-            for image in "${required_images[@]}"; do
-              image_name=$(echo $image | cut -d'/' -f2 | cut -d':' -f1)
-              echo "导入 $image_name..."
-              if docker images | grep -q "$image"; then
-                docker save $image | ctr -n k8s.io images import -
-                echo "✅ $image_name 导入成功"
-              else
-                echo "❌ $image 镜像不存在"
-                exit 1
-              fi
-            done
-            
-            # 验证镜像导入完成
-            echo "🔍 验证镜像导入状态..."
-            max_attempts=10
-            attempt=1
-            
-            while [ $attempt -le $max_attempts ]; do
-              echo "检查镜像导入状态 (尝试 $attempt/$max_attempts)..."
-              all_imported=true
-              
-              for image in "${required_images[@]}"; do
-                if ctr -n k8s.io images list | grep -q "$image"; then
-                  echo "✅ $image 已导入"
-                else
-                  echo "⏳ $image 尚未导入，等待中..."
-                  all_imported=false
-                fi
-              done
-              
-              if [ "$all_imported" = true ]; then
-                echo "✅ 所有镜像导入完成！"
-                break
-              fi
-              
-              if [ $attempt -eq $max_attempts ]; then
-                echo "❌ 镜像导入超时，以下镜像未能成功导入："
-                for image in "${required_images[@]}"; do
-                  if ! ctr -n k8s.io images list | grep -q "$image"; then
-                    echo "  - $image"
-                  fi
-                done
-                exit 1
-              fi
-              
-              echo "等待2秒后重试..."
-              sleep 2
-              attempt=$((attempt + 1))
-            done
-
-  # 3. 部署基础设施（命名空间、配置、数据库）
-  deploy_infrastructure:
-    if: github.event_name == 'push'
-    runs-on: ubuntu-22.04
-    needs: [import_images]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Deploy infrastructure
-        uses: appleboy/ssh-action@v0.1.10
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.aliCloud }}
-          script: |
-            cd /home/Volunteer-website
-            
-            # 检查 kubectl 是否可用
-            echo "🔍 检查 kubectl 是否可用..."
-            if ! command -v kubectl &> /dev/null; then
-              echo "❌ kubectl 未安装或不在 PATH 中"
-              exit 1
-            else
-              echo "✅ kubectl 可用"
-            fi
-            
-            # 检查集群连接
-            echo "🔗 检查 Kubernetes 集群连接..."
-            if kubectl cluster-info >/dev/null 2>&1; then
-              echo "✅ Kubernetes 集群连接正常"
-            else
-              echo "❌ 无法连接到 Kubernetes 集群，请检查 kubeconfig、网络与集群状态"
-              exit 1
-            fi
-            
-            # 创建命名空间
-            echo "📦 创建命名空间..."
-            kubectl apply -f k8s/namespace.yaml
-            
-            # 创建配置
-            echo "⚙️ 创建配置..."
-            kubectl apply -f k8s/configmap.yaml
-            
-            # 部署数据库服务
-            echo "🗄️ 部署数据库服务..."
-            kubectl apply -f k8s/postgres-deployment.yaml
-            
-            # 等待数据库就绪
-            echo "⏳ 等待数据库服务就绪..."
-            kubectl wait --for=condition=available --timeout=300s deployment/postgres -n mywork || true
-            
-            echo "✅ 基础设施部署完成"
-
-  # 4. 部署应用服务（微服务和前端）
-  deploy_services:
-    if: github.event_name == 'push'
-    runs-on: ubuntu-22.04
-    needs: [deploy_infrastructure]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Deploy microservices and frontend
-        uses: appleboy/ssh-action@v0.1.10
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.aliCloud }}
-          script: |
-            cd /home/Volunteer-website
-            
-            # 部署微服务
-            echo "🔧 部署微服务..."
-            kubectl apply -f k8s/microservices-deployments.yaml
-            kubectl apply -f k8s/microservices-services.yaml
-            
-            # 部署前端
-            echo "🔧 部署前端..."
-            kubectl apply -f k8s/frontend-deployment.yaml
-            
-            # 等待基础服务部署完成
-            echo "⏳ 等待基础服务部署完成..."
-            base_deployments=(
-              "user-service"
-              "activity-service"
-              "notification-service"
-              "frontend-service"
-            )
-            
-            for deployment in "${base_deployments[@]}"; do
-              echo "等待 $deployment 就绪..."
-              kubectl wait --for=condition=available --timeout=300s deployment/$deployment -n mywork || true
-            done
-            
-            echo "✅ 应用服务部署完成"
-
-  # 5. 部署网关和 Ingress
-  deploy_gateway:
-    if: github.event_name == 'push'
-    runs-on: ubuntu-22.04
-    needs: [deploy_services]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Deploy gateway and ingress
-        uses: appleboy/ssh-action@v0.1.10
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.aliCloud }}
-          script: |
-            cd /home/Volunteer-website
-            
-            # 部署 nginx 网关
-            echo "🌐 部署 nginx 网关..."
-            kubectl apply -f k8s/nginx-deployment.yaml
-            
-            # 等待nginx网关部署完成
-            echo "⏳ 等待 nginx 网关部署完成..."
-            kubectl wait --for=condition=available --timeout=300s deployment/nginx-gateway -n mywork || true
-            
-            # 部署 Ingress
-            echo "🚪 部署 Ingress..."
-            kubectl apply -f k8s/ingress-nginx-controller.yaml
-            kubectl apply -f k8s/ingress.yaml
-            
-            echo "✅ 网关和 Ingress 部署完成"
-
-  # 6. 验证部署状态
-  verify_deployment:
-    if: github.event_name == 'push'
-    runs-on: ubuntu-22.04
-    needs: [deploy_gateway]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Verify deployment status
-        uses: appleboy/ssh-action@v0.1.10
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.aliCloud }}
-          script: |
-            cd /home/Volunteer-website
-            
-            # 检查服务状态
-            echo "📊 检查服务状态..."
-            
-            echo "=== Pods ==="
-            kubectl get pods -n mywork
-            
-            echo "=== Services ==="
-            kubectl get services -n mywork
-            
-            echo "=== Ingress ==="
-            kubectl get ingress -n mywork
-            
-            echo "=== ConfigMaps ==="
-            kubectl get configmaps -n mywork
-            
-            echo "=== Deployments ==="
-            kubectl get deployments -n mywork
-            
-            # 获取访问信息
-            echo "🔗 获取访问信息..."
-            
-            # 获取 Ingress 信息
-            echo "=== Ingress 访问地址 ==="
-            kubectl get ingress -n mywork -o wide
-            
-            # 获取 NodePort 信息
-            echo "=== NodePort 访问地址 ==="
-            kubectl get service nginx-gateway-nodeport -n mywork -o wide || echo "NodePort 服务不存在"
-            
-            # 获取集群 IP
-            CLUSTER_IP=$(kubectl get service nginx-gateway-service -n mywork -o jsonpath='{.spec.clusterIP}' 2>/dev/null || echo "N/A")
-            echo "=== 集群内访问地址 ==="
-            echo "http://$CLUSTER_IP"
-            
-            echo "✅ 部署验证完成！"
-      
-      - name: Deployment Summary
-        run: |
-          echo "## 🎉 部署完成！" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 部署阶段" >> $GITHUB_STEP_SUMMARY
-          echo "| 阶段 | 状态 |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|------|" >> $GITHUB_STEP_SUMMARY
-          echo "| 准备和构建镜像 | ✅ 完成 |" >> $GITHUB_STEP_SUMMARY
-          echo "| 导入镜像到 containerd | ✅ 完成 |" >> $GITHUB_STEP_SUMMARY
-          echo "| 部署基础设施 | ✅ 完成 |" >> $GITHUB_STEP_SUMMARY
-          echo "| 部署应用服务 | ✅ 完成 |" >> $GITHUB_STEP_SUMMARY
-          echo "| 部署网关和 Ingress | ✅ 完成 |" >> $GITHUB_STEP_SUMMARY
-          echo "| 验证部署状态 | ✅ 完成 |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 已部署服务" >> $GITHUB_STEP_SUMMARY
-          echo "| 服务 | 状态 |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|------|" >> $GITHUB_STEP_SUMMARY
-          echo "| 用户服务 | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
-          echo "| 活动服务 | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
-          echo "| 通知服务 | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
-          echo "| 前端服务 | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
-          echo "| PostgreSQL | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
-          echo "| Nginx网关 | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY
-          echo "| Ingress | ✅ 已部署 |" >> $GITHUB_STEP_SUMMARY

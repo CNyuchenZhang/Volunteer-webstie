@@ -17,9 +17,19 @@ spec:
       labels:
         app: postgres
     spec:
+      # Pod 级别安全上下文
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999  # postgres 用户 ID
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      # 禁用自动挂载服务账号令牌
+      automountServiceAccountToken: false
       containers:
       - name: postgres
         image: postgres:13
+        imagePullPolicy: Always
         ports:
         - containerPort: 5432
         env:
@@ -29,6 +39,21 @@ spec:
           value: "postgres"
         - name: POSTGRES_PASSWORD
           value: "password"
+        # 容器级别安全上下文
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false  # PostgreSQL 需要写入数据
+          runAsNonRoot: true
+          runAsUser: 999  # postgres 用户 ID
+          capabilities:
+            drop:
+            - ALL
+            add:
+            - CHOWN
+            - DAC_OVERRIDE
+            - FOWNER
+            - SETGID
+            - SETUID
         resources:
           requests:
             memory: "512Mi"
