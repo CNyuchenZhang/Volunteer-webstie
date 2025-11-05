@@ -1,11 +1,13 @@
-name: 🚀 Volunteer Platform CI/CD
+name: 🚀 Volunteer Platform CI/CD (DISABLED)
 
+# WORKFLOW DISABLED - Replaced by ci.yml and cd.yml
+# To re-enable: change branch to "main"
 on:
   pull_request:
-    branches: [ "main" ]
+    branches: [ "workflow-disabled-never-trigger" ]
     types: [opened, synchronize, reopened]
   push:
-    branches: [ "main" ]
+    branches: [ "workflow-disabled-never-trigger" ]
 
 jobs:
   # 代码与依赖安全扫描（PR）
@@ -476,7 +478,6 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:

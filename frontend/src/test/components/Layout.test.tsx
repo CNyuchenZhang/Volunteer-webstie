@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import Layout from '../../components/Layout/Layout';
-import { AuthProvider } from '../../contexts/AuthContext';
 import * as api from '../../services/api';
 
 // Mock react-i18next
@@ -12,6 +11,25 @@ vi.mock('react-i18next', () => ({
     i18n: { changeLanguage: vi.fn() }
   }),
   Trans: ({ children }: any) => children,
+}));
+
+// Mock AuthContext with a user
+vi.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => ({
+    user: {
+      id: 1,
+      email: 'test@test.com',
+      username: 'testuser',
+      role: 'volunteer',
+      first_name: 'Test',
+      last_name: 'User',
+    },
+    login: vi.fn(),
+    logout: vi.fn(),
+    register: vi.fn(),
+    updateUser: vi.fn(),
+  }),
+  AuthProvider: ({ children }: any) => children,
 }));
 
 // Mock API
@@ -45,9 +63,7 @@ describe('Layout Component', () => {
   const renderLayout = () => {
     return render(
       <BrowserRouter>
-        <AuthProvider>
-          <Layout />
-        </AuthProvider>
+        <Layout />
       </BrowserRouter>
     );
   };
@@ -119,9 +135,11 @@ describe('Layout Component', () => {
   it('应该加载通知数据', async () => {
     renderLayout();
     
+    // Layout组件在useEffect中检查if (!user) return;
+    // 由于我们的mock用户存在，通知API应该被调用
     await waitFor(() => {
       expect(api.notificationAPI.getNotifications).toHaveBeenCalled();
-    });
+    }, { timeout: 3000 });
   });
 
   it('应该显示内容区域', () => {
@@ -136,9 +154,10 @@ describe('Layout Component', () => {
     
     renderLayout();
     
+    // 即使失败，API也应该被调用
     await waitFor(() => {
       expect(api.notificationAPI.getNotifications).toHaveBeenCalled();
-    });
+    }, { timeout: 3000 });
   });
 
   it('应该包含用户菜单', () => {

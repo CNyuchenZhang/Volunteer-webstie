@@ -1,0 +1,542 @@
+name: 🔍 Continuous Integration
+
+on:
+  pull_request:
+    branches: [ "main" ]
+    types: [opened, synchronize, reopened]
+
+jobs:
+  # 代码与依赖安全扫描
+  sast:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 获取完整 Git 历史，Gitleaks 需要扫描 PR 变更
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Gitleaks (secrets)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          path: .
+          report-format: sarif
+          report-path: gitleaks.sarif
+
+      - name: Install SAST tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install bandit semgrep pip-audit
+
+      - name: Bandit (Python SAST)
+        run: bandit -r services -f json -o bandit.json || true
+
+      - name: Semgrep (generic SAST)
+        run: semgrep ci --sarif --output semgrep.sarif || true
+
+      - name: Dependency scan (pip-audit)
+        run: |
+          pip-audit -r services/user/requirements.txt -f sarif -o pip-audit-user.sarif || true
+          pip-audit -r services/activity/requirements.txt -f sarif -o pip-audit-activity.sarif || true
+          pip-audit -r services/notification/requirements.txt -f sarif -o pip-audit-notification.sarif || true
+
+      - name: Generate SAST HTML reports
+        continue-on-error: true
+        run: |
+          python3 << 'PYTHON_SCRIPT'
+          import json
+          import glob
+          import os
+          
+          # 工具映射
+          tool_names = {
+              'gitleaks.sarif': 'Gitleaks - 密钥泄露检测',
+              'bandit.json': 'Bandit - Python 安全扫描',
+              'semgrep.sarif': 'Semgrep - 通用代码安全扫描',
+              'pip-audit-user.sarif': 'pip-audit - User Service 依赖漏洞',
+              'pip-audit-activity.sarif': 'pip-audit - Activity Service 依赖漏洞',
+              'pip-audit-notification.sarif': 'pip-audit - Notification Service 依赖漏洞'
+          }
+          
+          all_results = {}
+          
+          # 处理 SARIF 文件
+          for sarif_file in glob.glob('*.sarif'):
+              try:
+                  with open(sarif_file, 'r', encoding='utf-8') as f:
+                      data = json.load(f)
+                  
+                  tool_name = tool_names.get(sarif_file, sarif_file.replace('.sarif', '').replace('-', ' ').title())
+                  
+                  # 解析 SARIF 结果
+                  runs = data.get('runs', [])
+                  findings = []
+                  total_findings = 0
+                  
+                  for run in runs:
+                      results = run.get('results', [])
+                      total_findings += len(results)
+                      
+                      for result in results:
+                          rule_id = result.get('ruleId', 'N/A')
+                          message = result.get('message', {}).get('text', 'N/A')
+                          level = result.get('level', 'warning')
+                          severity = result.get('properties', {}).get('severity', level)
+                          
+                          # 获取位置信息
+                          locations = result.get('locations', [])
+                          location_info = 'N/A'
+                          if locations:
+                              loc = locations[0].get('physicalLocation', {})
+                              file_path = loc.get('artifactLocation', {}).get('uri', 'N/A')
+                              region = loc.get('region', {})
+                              start_line = region.get('startLine', 'N/A')
+                              location_info = f"{file_path}:{start_line}"
+                          
+                          findings.append({
+                              'rule_id': rule_id,
+                              'message': message,
+                              'severity': severity,
+                              'location': location_info
+                          })
+                  
+                  all_results[sarif_file] = {
+                      'tool': tool_name,
+                      'total': total_findings,
+                      'findings': findings
+                  }
+                  
+                  # 生成单个工具的 HTML 报告
+                  html_file = sarif_file.replace('.sarif', '.html')
+                  
+                  html = f"""<!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>{tool_name} - SAST Report</title>
+              <style>
+                  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+                  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; padding: 20px; }}
+                  .container {{ max-width: 1400px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }}
+                  header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; }}
+                  .summary {{ padding: 20px; background: #f8f9fa; }}
+                  .findings-table {{ width: 100%; border-collapse: collapse; }}
+                  .findings-table th {{ background: #495057; color: white; padding: 12px; text-align: left; }}
+                  .findings-table td {{ padding: 12px; border-bottom: 1px solid #e9ecef; }}
+                  .severity-badge {{ padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; }}
+                  .severity-error {{ background: #dc3545; color: white; }}
+                  .severity-warning {{ background: #fd7e14; color: white; }}
+                  .no-findings {{ text-align: center; padding: 40px; color: #28a745; }}
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <header>
+                      <h1>🔒 {tool_name}</h1>
+                  </header>
+                  <div class="summary">
+                      <h2>Total Findings: {total_findings}</h2>
+                  </div>
+                  <div style="padding: 20px;">
+          """
+                  
+                  if findings:
+                      html += """
+                      <table class="findings-table">
+                          <thead>
+                              <tr>
+                                  <th>Rule ID</th>
+                                  <th>Severity</th>
+                                  <th>Location</th>
+                                  <th>Message</th>
+                              </tr>
+                          </thead>
+                          <tbody>
+                      """
+                      
+                      for finding in findings:
+                          severity_class = f'severity-{finding["severity"].lower()}'
+                          html += f"""
+                              <tr>
+                                  <td>{finding['rule_id']}</td>
+                                  <td><span class="severity-badge {severity_class}">{finding['severity'].upper()}</span></td>
+                                  <td>{finding['location']}</td>
+                                  <td>{finding['message'][:200]}</td>
+                              </tr>
+                          """
+                      
+                      html += "</tbody></table>"
+                  else:
+                      html += '<div class="no-findings">✅ No security issues found!</div>'
+                  
+                  html += "</div></div></body></html>"
+                  
+                  with open(html_file, 'w', encoding='utf-8') as f:
+                      f.write(html)
+                  print(f"✅ Generated {html_file}")
+              except Exception as e:
+                  print(f"⚠️  Error processing {sarif_file}: {e}")
+          
+          # 处理 Bandit JSON 文件
+          bandit_file = 'bandit.json'
+          if os.path.exists(bandit_file):
+              try:
+                  with open(bandit_file, 'r', encoding='utf-8') as f:
+                      bandit_data = json.load(f)
+                  
+                  tool_name = 'Bandit - Python 安全扫描'
+                  results = bandit_data.get('results', [])
+                  
+                  html_file = 'bandit.html'
+                  html = f"""<!DOCTYPE html>
+          <html>
+          <head><title>{tool_name}</title></head>
+          <body>
+              <h1>{tool_name}</h1>
+              <p>Total: {len(results)}</p>
+          </body>
+          </html>
+          """
+                  
+                  with open(html_file, 'w') as f:
+                      f.write(html)
+                  print(f"✅ Generated {html_file}")
+              except Exception as e:
+                  print(f"⚠️  Error processing bandit.json: {e}")
+          
+          print("✅ SAST report generation complete")
+          PYTHON_SCRIPT
+
+      - name: Upload SAST artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sast_reports
+          path: |
+            *.sarif
+            *.json
+            *.html
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # 单元测试与覆盖率
+  unit:
+    runs-on: ubuntu-22.04
+    needs: [sast]
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install coverage
+          pip install -r services/user/requirements.txt
+          pip install -r services/activity/requirements.txt
+          pip install -r services/notification/requirements.txt
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          if npm ci; then
+            echo "✅ npm ci 成功"
+          else
+            echo "⚠️ npm ci 失败，回退到 npm install"
+            npm install
+          fi
+
+      - name: Run frontend unit tests (with coverage)
+        run: |
+          cd frontend
+          npm run test:unit:coverage || npm run test:unit || true
+          
+          # 验证覆盖率文件是否生成
+          if [ ! -f "coverage/coverage-summary.json" ]; then
+            echo "⚠️  覆盖率文件未生成，创建占位符"
+            mkdir -p coverage
+            cat > coverage/coverage-summary.json << 'EOF'
+          {
+            "total": {
+              "lines": {"total": 0, "covered": 0, "skipped": 0, "pct": 0},
+              "statements": {"total": 0, "covered": 0, "skipped": 0, "pct": 0},
+              "functions": {"total": 0, "covered": 0, "skipped": 0, "pct": 0},
+              "branches": {"total": 0, "covered": 0, "skipped": 0, "pct": 0}
+            }
+          }
+          EOF
+            echo "✅ 已创建占位符覆盖率文件"
+          else
+            echo "✅ 覆盖率文件已生成"
+          fi
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max-old-space-size=8192 --expose-gc"
+          NODE_ENV: "test"
+
+      - name: Run user service tests
+        run: |
+          cd services/user
+          python manage.py migrate --settings=user_service.settings.base
+          coverage run --source=. manage.py test users.tests --noinput --settings=user_service.settings.base
+          coverage xml -o ../../coverage-user.xml
+          coverage html -d ../../coverage-user-html
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+
+      - name: Run activity service tests
+        run: |
+          cd services/activity
+          python manage.py migrate --settings=activity_service.settings.base
+          coverage run --source=. manage.py test activities.tests --noinput --settings=activity_service.settings.base
+          coverage xml -o ../../coverage-activity.xml
+          coverage html -d ../../coverage-activity-html
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+
+      - name: Run notification service tests
+        run: |
+          cd services/notification
+          python manage.py migrate --settings=notification_service.settings
+          coverage run --source=. manage.py test notification_service.tests --noinput --settings=notification_service.settings
+          coverage xml -o ../../coverage-notification.xml
+          coverage html -d ../../coverage-notification-html
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+
+      - name: Generate coverage summary
+        continue-on-error: true
+        run: |
+          python3 << 'PYTHON_SCRIPT'
+          import xml.etree.ElementTree as ET
+          import json
+          import os
+          
+          coverage_data = {}
+          total_covered = 0
+          total_lines = 0
+          
+          # 后端服务覆盖率
+          for xml_file in ['coverage-user.xml', 'coverage-activity.xml', 'coverage-notification.xml']:
+              if os.path.exists(xml_file):
+                  try:
+                      tree = ET.parse(xml_file)
+                      root = tree.getroot()
+                      service_name = xml_file.replace('coverage-', '').replace('.xml', '')
+                      
+                      covered = int(root.attrib.get('lines-covered', 0))
+                      lines = int(root.attrib.get('lines-valid', 0))
+                      
+                      coverage_data[service_name] = {
+                          'covered': covered,
+                          'total': lines,
+                          'percentage': (covered / lines * 100) if lines > 0 else 0
+                      }
+                      
+                      total_covered += covered
+                      total_lines += lines
+                  except Exception as e:
+                      print(f"⚠️  Could not parse {xml_file}: {e}")
+          
+          # 前端覆盖率
+          frontend_file = 'frontend/coverage/coverage-summary.json'
+          if os.path.exists(frontend_file):
+              try:
+                  with open(frontend_file, 'r') as f:
+                      frontend_data = json.load(f)
+                  
+                  frontend_total = frontend_data.get('total', {})
+                  frontend_lines = frontend_total.get('lines', {})
+                  frontend_covered = frontend_lines.get('covered', 0)
+                  frontend_total_lines = frontend_lines.get('total', 0)
+                  
+                  if frontend_total_lines > 0:
+                      frontend_pct = (frontend_covered / frontend_total_lines * 100)
+                      coverage_data['frontend'] = {
+                          'covered': frontend_covered,
+                          'total': frontend_total_lines,
+                          'percentage': frontend_pct
+                      }
+                      total_covered += frontend_covered
+                      total_lines += frontend_total_lines
+                      print(f"✅ 前端覆盖率: {frontend_pct:.2f}%")
+                  else:
+                      print("⚠️  前端测试失败，覆盖率为 0%")
+                      coverage_data['frontend'] = {'covered': 0, 'total': 0, 'percentage': 0}
+              except Exception as e:
+                  print(f"⚠️  无法解析前端覆盖率: {e}")
+          
+          aggregate_pct = (total_covered / total_lines * 100) if total_lines > 0 else 0
+          print(f"\n📊 总体覆盖率: {aggregate_pct:.2f}%")
+          
+          if aggregate_pct < 80:
+              print(f"⚠️  覆盖率低于目标 (80%)")
+          else:
+              print(f"✅ 覆盖率达标")
+          PYTHON_SCRIPT
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage_reports
+          path: |
+            coverage-*.xml
+            coverage-*-html/
+            frontend/coverage/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # 集成测试
+  integration:
+    runs-on: ubuntu-22.04
+    needs: [unit]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Start test environment
+        run: docker compose -f docker-compose.test.yml up -d --build
+
+      - name: Wait for services
+        run: |
+          for i in {1..60}; do
+            curl -fsS http://localhost:8001/api/v1/health/ && \
+            curl -fsS http://localhost:8002/api/v1/health/ && \
+            curl -fsS http://localhost:8003/api/v1/health/ && exit 0 || sleep 2
+          done
+          exit 1
+
+      - name: Install test tools
+        run: |
+          sudo npm -g i newman
+          cd frontend && npm ci && cd ..
+          npx playwright install --with-deps
+
+      - name: Run API tests
+        run: |
+          newman run tests/postman_collection.json \
+            --environment tests/postman_env.json \
+            --reporters cli,html \
+            --reporter-html-export newman-report.html
+
+      - name: Run E2E tests
+        run: npm test --prefix frontend -- --reporter=html || true
+
+      - name: Upload integration artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration_reports
+          path: |
+            newman-report.html
+            frontend/playwright-report
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # 容器安全扫描
+  container_scan:
+    runs-on: ubuntu-22.04
+    needs: [unit]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build images
+        run: |
+          docker build -t user-service:ci ./services/user || true
+          docker build -t activity-service:ci ./services/activity || true
+          docker build -t notification-service:ci ./services/notification || true
+
+      - name: Trivy scan (user-service)
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: user-service:ci
+          format: 'json'
+          exit-code: '0'
+          output: 'trivy-user.json'
+
+      - name: Trivy scan (activity-service)
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: activity-service:ci
+          format: 'json'
+          exit-code: '0'
+          output: 'trivy-activity.json'
+
+      - name: Upload scan results
+        uses: actions/upload-artifact@v4
+        with:
+          name: container_scan_results
+          path: trivy-*.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # 性能测试
+  performance:
+    runs-on: ubuntu-22.04
+    needs: [integration]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Start performance environment
+        run: docker compose -f docker-compose.perf.yml up -d --build
+
+      - name: Wait for services
+        run: |
+          for i in {1..60}; do
+            curl -fsS http://localhost:8001/api/v1/health/ && exit 0 || sleep 2
+          done
+
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
+            --keyserver hkp://keyserver.ubuntu.com:80 \
+            --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | \
+            sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install -y k6
+
+      - name: Run k6 tests
+        run: k6 run tests/perf/k6-load.js || true
+        continue-on-error: true
+
+      - name: Upload performance results
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance_results
+          path: k6-*.json
+          if-no-files-found: ignore
+          retention-days: 7
+

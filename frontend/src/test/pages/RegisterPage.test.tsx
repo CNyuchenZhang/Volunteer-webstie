@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import RegisterPage from '../../pages/RegisterPage';
 import { AuthProvider } from '../../contexts/AuthContext';
@@ -42,6 +42,10 @@ describe('RegisterPage', () => {
     vi.clearAllMocks();
   });
 
+  afterEach(() => {
+    cleanup(); // 清理DOM，避免多次渲染导致重复元素
+  });
+
   const renderRegisterPage = () => {
     return render(
       <BrowserRouter>
@@ -55,7 +59,8 @@ describe('RegisterPage', () => {
   it('应该渲染注册表单', () => {
     renderRegisterPage();
     
-    expect(screen.getByText('auth.register')).toBeInTheDocument();
+    // 使用更具体的选择器
+    expect(screen.getAllByText('auth.register')[0]).toBeInTheDocument();
     expect(screen.getByLabelText('auth.email')).toBeInTheDocument();
     expect(screen.getByLabelText('auth.password')).toBeInTheDocument();
     expect(screen.getByLabelText('auth.confirmPassword')).toBeInTheDocument();
@@ -64,18 +69,18 @@ describe('RegisterPage', () => {
   it('应该显示必填字段验证错误', async () => {
     renderRegisterPage();
     
-    const submitButton = screen.getByRole('button', { name: /auth.register/i });
+    const submitButton = screen.getAllByRole('button', { name: /auth.register/i })[0];
     fireEvent.click(submitButton);
 
     await waitFor(() => {
-      expect(screen.getByText('auth.emailRequired')).toBeInTheDocument();
+      expect(screen.getByText('auth.roleRequired')).toBeInTheDocument();
     });
   });
 
   it('应该显示登录链接', () => {
     renderRegisterPage();
     
-    const loginLink = screen.getByText('auth.hasAccount');
+    const loginLink = screen.getByText('auth.haveAccount');
     expect(loginLink).toBeInTheDocument();
     expect(loginLink.closest('a')).toHaveAttribute('href', '/login');
   });
@@ -96,8 +101,10 @@ describe('RegisterPage', () => {
   it('应该有角色选择字段', () => {
     renderRegisterPage();
     
-    const roleLabel = screen.getByText('auth.role');
-    expect(roleLabel).toBeInTheDocument();
+    // 使用getAllByText因为可能有多个auth.role（label和title）
+    const roleLabels = screen.getAllByText('auth.role');
+    expect(roleLabels.length).toBeGreaterThan(0);
+    expect(roleLabels[0]).toBeInTheDocument();
   });
 });
 

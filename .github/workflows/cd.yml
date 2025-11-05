@@ -1,0 +1,282 @@
+name: 🚀 Continuous Deployment
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:  # 允许手动触发部署
+
+jobs:
+  # 准备和构建镜像
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Build and prepare images
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.aliCloud }}
+          script: |
+            echo "🚀 开始部署 Volunteer Platform..."
+            
+            # 进入项目目录
+            cd /home/Volunteer-website
+            
+            # 更新代码
+            echo "📥 更新代码..."
+            git pull
+            
+            # 构建镜像
+            echo "🔨 构建镜像..."
+            docker compose build
+            
+            # 检查现有镜像
+            echo "📋 检查现有镜像..."
+            docker images | grep jsrgzyc || echo "⚠️  未找到镜像"
+            
+            echo "✅ 镜像构建完成"
+
+  # 导入镜像到 containerd
+  import:
+    runs-on: ubuntu-22.04
+    needs: [build]
+    steps:
+      - name: Import images to containerd
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.aliCloud }}
+          script: |
+            cd /home/Volunteer-website
+            
+            echo "📦 导入镜像到 containerd..."
+            
+            required_images=(
+              "jsrgzyc/user-service:latest"
+              "jsrgzyc/activity-service:latest"
+              "jsrgzyc/notification-service:latest"
+              "jsrgzyc/frontend:latest"
+            )
+            
+            for image in "${required_images[@]}"; do
+              image_name=$(echo $image | cut -d'/' -f2 | cut -d':' -f1)
+              echo "导入 $image_name..."
+              if docker images | grep -q "$image"; then
+                docker save $image | ctr -n k8s.io images import -
+                echo "✅ $image_name 导入成功"
+              else
+                echo "❌ $image 镜像不存在"
+                exit 1
+              fi
+            done
+            
+            # 验证镜像导入
+            echo "🔍 验证镜像导入状态..."
+            for i in {1..10}; do
+              all_imported=true
+              for image in "${required_images[@]}"; do
+                if ! ctr -n k8s.io images list | grep -q "$image"; then
+                  all_imported=false
+                  break
+                fi
+              done
+              
+              if [ "$all_imported" = true ]; then
+                echo "✅ 所有镜像导入完成！"
+                exit 0
+              fi
+              
+              echo "等待镜像导入... ($i/10)"
+              sleep 2
+            done
+            
+            echo "❌ 镜像导入超时"
+            exit 1
+
+  # 部署基础设施
+  deploy-infrastructure:
+    runs-on: ubuntu-22.04
+    needs: [import]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Deploy infrastructure
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.aliCloud }}
+          script: |
+            cd /home/Volunteer-website
+            
+            # 检查 kubectl
+            echo "🔍 检查 kubectl..."
+            if ! command -v kubectl &> /dev/null; then
+              echo "❌ kubectl 未安装"
+              exit 1
+            fi
+            
+            # 检查集群连接
+            echo "🔗 检查 Kubernetes 集群连接..."
+            if ! kubectl cluster-info >/dev/null 2>&1; then
+              echo "❌ 无法连接到 Kubernetes 集群"
+              exit 1
+            fi
+            
+            # 创建命名空间
+            echo "📦 创建命名空间..."
+            kubectl apply -f k8s/namespace.yaml
+            
+            # 创建配置
+            echo "⚙️  创建配置..."
+            kubectl apply -f k8s/configmap.yaml
+            
+            # 部署数据库
+            echo "🗄️  部署数据库..."
+            kubectl apply -f k8s/postgres-deployment.yaml
+            
+            # 等待数据库就绪
+            echo "⏳ 等待数据库就绪..."
+            kubectl wait --for=condition=available --timeout=300s deployment/postgres -n mywork || true
+            
+            echo "✅ 基础设施部署完成"
+
+  # 部署应用服务
+  deploy-services:
+    runs-on: ubuntu-22.04
+    needs: [deploy-infrastructure]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Deploy microservices and frontend
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.aliCloud }}
+          script: |
+            cd /home/Volunteer-website
+            
+            # 部署微服务
+            echo "🔧 部署微服务..."
+            kubectl apply -f k8s/microservices-deployments.yaml
+            kubectl apply -f k8s/microservices-services.yaml
+            
+            # 部署前端
+            echo "🔧 部署前端..."
+            kubectl apply -f k8s/frontend-deployment.yaml
+            
+            # 等待服务就绪
+            echo "⏳ 等待服务就绪..."
+            deployments=(
+              "user-service"
+              "activity-service"
+              "notification-service"
+              "frontend-service"
+            )
+            
+            for deployment in "${deployments[@]}"; do
+              echo "等待 $deployment..."
+              kubectl wait --for=condition=available --timeout=300s deployment/$deployment -n mywork || true
+            done
+            
+            echo "✅ 应用服务部署完成"
+
+  # 部署网关
+  deploy-gateway:
+    runs-on: ubuntu-22.04
+    needs: [deploy-services]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Deploy gateway and ingress
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.aliCloud }}
+          script: |
+            cd /home/Volunteer-website
+            
+            # 部署 nginx 网关
+            echo "🌐 部署 nginx 网关..."
+            kubectl apply -f k8s/nginx-deployment.yaml
+            
+            # 等待网关就绪
+            echo "⏳ 等待网关就绪..."
+            kubectl wait --for=condition=available --timeout=300s deployment/nginx-gateway -n mywork || true
+            
+            # 部署 Ingress
+            echo "🚪 部署 Ingress..."
+            kubectl apply -f k8s/ingress-nginx-controller.yaml
+            kubectl apply -f k8s/ingress.yaml
+            
+            echo "✅ 网关部署完成"
+
+  # 验证部署
+  verify:
+    runs-on: ubuntu-22.04
+    needs: [deploy-gateway]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Verify deployment
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.aliCloud }}
+          script: |
+            cd /home/Volunteer-website
+            
+            echo "📊 验证部署状态..."
+            
+            echo "=== Pods ==="
+            kubectl get pods -n mywork
+            
+            echo "=== Services ==="
+            kubectl get services -n mywork
+            
+            echo "=== Ingress ==="
+            kubectl get ingress -n mywork
+            
+            echo "=== Deployments ==="
+            kubectl get deployments -n mywork
+            
+            # 获取访问信息
+            echo "🔗 获取访问信息..."
+            kubectl get ingress -n mywork -o wide
+            
+            echo "✅ 部署验证完成！"
+      
+      - name: Deployment summary
+        run: |
+          echo "## 🎉 部署完成！" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 部署阶段" >> $GITHUB_STEP_SUMMARY
+          echo "| 阶段 | 状态 |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|------|" >> $GITHUB_STEP_SUMMARY
+          echo "| 构建镜像 | ✅ 完成 |" >> $GITHUB_STEP_SUMMARY
+          echo "| 导入镜像 | ✅ 完成 |" >> $GITHUB_STEP_SUMMARY
+          echo "| 部署基础设施 | ✅ 完成 |" >> $GITHUB_STEP_SUMMARY
+          echo "| 部署应用服务 | ✅ 完成 |" >> $GITHUB_STEP_SUMMARY
+          echo "| 部署网关 | ✅ 完成 |" >> $GITHUB_STEP_SUMMARY
+          echo "| 验证部署 | ✅ 完成 |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 已部署服务" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ 用户服务" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ 活动服务" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ 通知服务" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ 前端服务" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ PostgreSQL 数据库" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Nginx 网关" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Ingress 控制器" >> $GITHUB_STEP_SUMMARY
+
