@@ -15,15 +15,48 @@ spec:
       labels:
         app: nginx-gateway
     spec:
+      # Pod 级别安全上下文
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101  # nginx 用户 ID
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      # 禁用自动挂载服务账号令牌
+      automountServiceAccountToken: false
       containers:
       - name: nginx
         image: nginx:1.25-alpine
+        imagePullPolicy: Always
         ports:
         - containerPort: 80
+        # 容器级别安全上下文
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false  # nginx 需要写入日志和临时文件
+          runAsNonRoot: true
+          runAsUser: 101  # nginx 用户 ID
+          capabilities:
+            drop:
+            - ALL
+            add:
+            - CHOWN
+            - SETGID
+            - SETUID
         volumeMounts:
         - name: nginx-config
           mountPath: /etc/nginx/nginx.conf
           subPath: nginx.conf
+          readOnly: true
+        - name: nginx-tmp
+          mountPath: /tmp
+        - name: nginx-cache
+          mountPath: /var/cache/nginx
+        - name: nginx-pid
+          mountPath: /var/run
+        - name: nginx-logs
+          mountPath: /var/log/nginx
+        # 资源限制
         resources:
           requests:
             memory: "128Mi"
@@ -47,6 +80,14 @@ spec:
       - name: nginx-config
         configMap:
           name: nginx-config
+      - name: nginx-tmp
+        emptyDir: {}
+      - name: nginx-cache
+        emptyDir: {}
+      - name: nginx-pid
+        emptyDir: {}
+      - name: nginx-logs
+        emptyDir: {}
 
 ---
 apiVersion: v1

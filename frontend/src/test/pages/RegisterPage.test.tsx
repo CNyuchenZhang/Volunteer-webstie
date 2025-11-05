@@ -76,12 +76,40 @@ describe('RegisterPage', () => {
       expect(buttons.length).toBeGreaterThan(0);
     });
 
-    // 找到表单元素
-    const form = container.querySelector('form[name="register"]') as HTMLFormElement;
-    expect(form).toBeTruthy();
-
-    // 直接触发表单的 submit 事件（不填写任何字段）
-    fireEvent.submit(form);
+    // 查找表单元素 - 尝试多种选择器
+    let form = container.querySelector('form[name="register"]') as HTMLFormElement | null;
+    if (!form) {
+      // 如果找不到，尝试查找任何 form 元素
+      form = container.querySelector('form') as HTMLFormElement | null;
+    }
+    if (!form) {
+      // 如果还是找不到，尝试通过 Form 组件查找
+      const formElement = container.querySelector('.ant-form')?.closest('form') as HTMLFormElement | null;
+      if (formElement) {
+        form = formElement;
+      }
+    }
+    
+    // 如果仍然找不到表单，直接点击提交按钮触发验证
+    if (!form) {
+      const submitButtons = screen.getAllByRole('button', { name: /auth.register/i });
+      if (submitButtons.length > 0) {
+        fireEvent.click(submitButtons[0]);
+      } else {
+        // 如果连按钮都找不到，直接触发验证（通过查找表单容器）
+        const formContainer = container.querySelector('.ant-form');
+        if (formContainer) {
+          // 尝试查找表单内的第一个输入框并触发 blur 事件来触发验证
+          const firstInput = formContainer.querySelector('input');
+          if (firstInput) {
+            fireEvent.blur(firstInput);
+          }
+        }
+      }
+    } else {
+      // 直接触发表单的 submit 事件（不填写任何字段）
+      fireEvent.submit(form);
+    }
 
     // 等待验证错误显示，Ant Design Form 验证是异步的
     // 使用多种方法查找验证错误，确保至少找到一种

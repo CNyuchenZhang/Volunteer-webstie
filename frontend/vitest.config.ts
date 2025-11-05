@@ -37,7 +37,7 @@ export default defineConfig({
     // CI环境适度并发，避免内存溢出
     sequence: {
       shuffle: false,
-      concurrent: process.env.CI ? 2 : false,  // CI只并发2个，减少内存压力
+      concurrent: process.env.CI ? true : false,  // CI启用并发，数量由maxConcurrency控制
     },
     // 保持隔离以提高稳定性
     isolate: true,

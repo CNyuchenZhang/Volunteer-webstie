@@ -13,12 +13,31 @@ spec:
       labels:
         app: frontend-service
     spec:
+      # Pod 级别安全上下文
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101  # nginx 用户 ID
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      # 禁用自动挂载服务账号令牌
+      automountServiceAccountToken: false
       containers:
       - name: frontend-service
         image: jsrgzyc/frontend:latest
-        imagePullPolicy: Never
+        imagePullPolicy: Always
         ports:
         - containerPort: 80
+        # 容器级别安全上下文
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 101  # nginx 用户 ID
+          capabilities:
+            drop:
+            - ALL
+        # 资源限制
         resources:
           requests:
             memory: "128Mi"
