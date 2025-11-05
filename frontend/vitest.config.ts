@@ -18,35 +18,31 @@ export default defineConfig({
       'build/',
       'tests/**', // 排除 Playwright E2E 测试
     ],
-    // CI优化配置 - 在CI环境使用更快的配置
-    pool: process.env.CI ? 'threads' : 'forks',  // CI使用threads更快
+    // CI优化配置 - 使用forks模式避免内存溢出
+    pool: 'forks',  // 使用forks模式，更稳定
     poolOptions: {
-      threads: {
-        // CI环境：使用多线程并发执行
-        singleThread: false,
-        isolate: false,  // 不隔离，共享内存更快
-        useAtomics: true,
-      },
       forks: {
-        // 本地环境：使用单fork保证稳定性
-        singleFork: true,
-        isolate: true,
-        execArgv: ['--expose-gc', '--max-old-space-size=4096'],
+        // CI环境：使用多个fork但减少并发
+        singleFork: process.env.CI ? false : true,  // CI允许多fork
+        isolate: true,  // 隔离每个进程，避免内存泄漏
+        execArgv: process.env.CI 
+          ? ['--expose-gc', '--max-old-space-size=6144']  // CI增加内存
+          : ['--expose-gc', '--max-old-space-size=4096'],
       },
     },
     // 超时配置
     testTimeout: 10000,
     hookTimeout: 5000,
     teardownTimeout: 5000,
-    // CI环境启用并发
+    // CI环境适度并发，避免内存溢出
     sequence: {
       shuffle: false,
-      concurrent: process.env.CI ? true : false,  // CI启用并发
+      concurrent: process.env.CI ? 2 : false,  // CI只并发2个，减少内存压力
     },
-    // CI环境不隔离以提高速度
-    isolate: process.env.CI ? false : true,
-    // 最大并发数（CI环境）
-    maxConcurrency: process.env.CI ? 5 : 1,
+    // 保持隔离以提高稳定性
+    isolate: true,
+    // 最大并发数（CI环境减少）
+    maxConcurrency: process.env.CI ? 2 : 1,
     // 优化覆盖率收集
     coverage: {
       provider: 'v8',

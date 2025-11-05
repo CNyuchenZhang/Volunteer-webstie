@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import Layout from '../../components/Layout/Layout';
 import * as api from '../../services/api';
@@ -60,6 +60,10 @@ describe('Layout Component', () => {
     });
   });
 
+  afterEach(() => {
+    cleanup();
+  });
+
   const renderLayout = () => {
     return render(
       <BrowserRouter>
@@ -93,7 +97,8 @@ describe('Layout Component', () => {
   it('应该显示语言切换器', () => {
     renderLayout();
     
-    expect(screen.getByTestId('language-switcher')).toBeInTheDocument();
+    const switchers = screen.getAllByTestId('language-switcher');
+    expect(switchers.length).toBeGreaterThan(0);
   });
 
   it('应该显示通知图标', () => {

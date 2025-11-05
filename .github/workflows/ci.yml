@@ -123,28 +123,43 @@ jobs:
               <title>{tool_name} - SAST Report</title>
               <style>
                   * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-                  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; padding: 20px; }}
-                  .container {{ max-width: 1400px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }}
+                  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #f5f7fa; padding: 20px; line-height: 1.6; }}
+                  .container {{ max-width: 1400px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; }}
                   header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; }}
-                  .summary {{ padding: 20px; background: #f8f9fa; }}
+                  h1 {{ font-size: 28px; margin-bottom: 10px; }}
+                  .summary {{ padding: 20px; background: #f8f9fa; border-bottom: 1px solid #e0e0e0; }}
+                  .stat {{ display: inline-block; margin-right: 30px; }}
+                  .stat-number {{ font-size: 32px; font-weight: bold; color: #667eea; }}
+                  .stat-label {{ color: #6c757d; font-size: 14px; margin-top: 5px; }}
                   .findings-table {{ width: 100%; border-collapse: collapse; }}
-                  .findings-table th {{ background: #495057; color: white; padding: 12px; text-align: left; }}
+                  .findings-table th {{ background: #495057; color: white; padding: 12px; text-align: left; font-weight: 600; }}
                   .findings-table td {{ padding: 12px; border-bottom: 1px solid #e9ecef; }}
-                  .severity-badge {{ padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; }}
+                  .findings-table tr:hover {{ background: #f8f9fa; }}
+                  .severity-badge {{ display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; }}
                   .severity-error {{ background: #dc3545; color: white; }}
                   .severity-warning {{ background: #fd7e14; color: white; }}
-                  .no-findings {{ text-align: center; padding: 40px; color: #28a745; }}
+                  .severity-note {{ background: #ffc107; color: #212529; }}
+                  .severity-none {{ background: #6c757d; color: white; }}
+                  .location {{ font-family: 'Courier New', monospace; font-size: 13px; color: #667eea; }}
+                  .no-findings {{ text-align: center; padding: 40px; color: #28a745; font-size: 18px; }}
+                  .content {{ padding: 20px; }}
               </style>
           </head>
           <body>
               <div class="container">
                   <header>
                       <h1>🔒 {tool_name}</h1>
+                      <div style="opacity: 0.9;">Security Scan Report</div>
                   </header>
+                  
                   <div class="summary">
-                      <h2>Total Findings: {total_findings}</h2>
+                      <div class="stat">
+                          <div class="stat-number">{total_findings}</div>
+                          <div class="stat-label">Total Findings</div>
+                      </div>
                   </div>
-                  <div style="padding: 20px;">
+                  
+                  <div class="content">
           """
                   
                   if findings:
@@ -165,18 +180,26 @@ jobs:
                           severity_class = f'severity-{finding["severity"].lower()}'
                           html += f"""
                               <tr>
-                                  <td>{finding['rule_id']}</td>
+                                  <td class="location">{finding['rule_id']}</td>
                                   <td><span class="severity-badge {severity_class}">{finding['severity'].upper()}</span></td>
-                                  <td>{finding['location']}</td>
-                                  <td>{finding['message'][:200]}</td>
+                                  <td class="location">{finding['location']}</td>
+                                  <td>{finding['message'][:200]}{'...' if len(finding['message']) > 200 else ''}</td>
                               </tr>
                           """
                       
-                      html += "</tbody></table>"
+                      html += """
+                          </tbody>
+                      </table>
+                      """
                   else:
                       html += '<div class="no-findings">✅ No security issues found!</div>'
                   
-                  html += "</div></div></body></html>"
+                  html += """
+                  </div>
+              </div>
+          </body>
+          </html>
+          """
                   
                   with open(html_file, 'w', encoding='utf-8') as f:
                       f.write(html)
@@ -184,33 +207,227 @@ jobs:
               except Exception as e:
                   print(f"⚠️  Error processing {sarif_file}: {e}")
           
-          # 处理 Bandit JSON 文件
+          # 处理 Bandit JSON 文件（格式与 SARIF 不同）
           bandit_file = 'bandit.json'
           if os.path.exists(bandit_file):
               try:
                   with open(bandit_file, 'r', encoding='utf-8') as f:
                       bandit_data = json.load(f)
                   
-                  tool_name = 'Bandit - Python 安全扫描'
-                  results = bandit_data.get('results', [])
+                  tool_name = tool_names.get(bandit_file, 'Bandit - Python 安全扫描')
+                  findings = []
+                  total_findings = 0
                   
-                  html_file = 'bandit.html'
+                  # Bandit JSON 格式：{"results": [{"issue_id": "...", "test_name": "...", "severity": "...", ...}]}
+                  results = bandit_data.get('results', [])
+                  total_findings = len(results)
+                  
+                  for result in results:
+                      issue_id = result.get('test_id', 'N/A')
+                      test_name = result.get('test_name', 'N/A')
+                      severity = result.get('issue_severity', result.get('severity', 'medium')).lower()
+                      confidence = result.get('issue_confidence', result.get('confidence', 'medium')).lower()
+                      message = result.get('issue_text', result.get('issue', 'N/A'))
+                      filename = result.get('filename', 'N/A')
+                      line_number = result.get('line_number', 'N/A')
+                      location_info = f"{filename}:{line_number}"
+                      
+                      # 组合 severity 和 confidence
+                      if severity == 'high' or confidence == 'high':
+                          severity_level = 'error'
+                      elif severity == 'medium' or confidence == 'medium':
+                          severity_level = 'warning'
+                      else:
+                          severity_level = 'note'
+                      
+                      findings.append({
+                          'rule_id': f"{test_name} ({issue_id})",
+                          'message': message,
+                          'severity': severity_level,
+                          'location': location_info
+                      })
+                  
+                  all_results[bandit_file] = {
+                      'tool': tool_name,
+                      'total': total_findings,
+                      'findings': findings
+                  }
+                  
+                  # 生成 Bandit HTML 报告
+                  html_file = bandit_file.replace('.json', '.html')
+                  severity_colors = {
+                      'error': '#dc3545',
+                      'warning': '#fd7e14',
+                      'note': '#ffc107',
+                      'none': '#6c757d'
+                  }
+                  
                   html = f"""<!DOCTYPE html>
-          <html>
-          <head><title>{tool_name}</title></head>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>{tool_name} - SAST Report</title>
+              <style>
+                  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+                  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #f5f7fa; padding: 20px; line-height: 1.6; }}
+                  .container {{ max-width: 1400px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; }}
+                  header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; }}
+                  h1 {{ font-size: 28px; margin-bottom: 10px; }}
+                  .summary {{ padding: 20px; background: #f8f9fa; border-bottom: 1px solid #e0e0e0; }}
+                  .stat {{ display: inline-block; margin-right: 30px; }}
+                  .stat-number {{ font-size: 32px; font-weight: bold; color: #667eea; }}
+                  .stat-label {{ color: #6c757d; font-size: 14px; margin-top: 5px; }}
+                  .findings-table {{ width: 100%; border-collapse: collapse; }}
+                  .findings-table th {{ background: #495057; color: white; padding: 12px; text-align: left; font-weight: 600; }}
+                  .findings-table td {{ padding: 12px; border-bottom: 1px solid #e9ecef; }}
+                  .findings-table tr:hover {{ background: #f8f9fa; }}
+                  .severity-badge {{ display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; }}
+                  .severity-error {{ background: #dc3545; color: white; }}
+                  .severity-warning {{ background: #fd7e14; color: white; }}
+                  .severity-note {{ background: #ffc107; color: #212529; }}
+                  .severity-none {{ background: #6c757d; color: white; }}
+                  .location {{ font-family: 'Courier New', monospace; font-size: 13px; color: #667eea; }}
+                  .no-findings {{ text-align: center; padding: 40px; color: #28a745; font-size: 18px; }}
+                  .content {{ padding: 20px; }}
+              </style>
+          </head>
           <body>
-              <h1>{tool_name}</h1>
-              <p>Total: {len(results)}</p>
+              <div class="container">
+                  <header>
+                      <h1>🔒 {tool_name}</h1>
+                      <div style="opacity: 0.9;">Security Scan Report</div>
+                  </header>
+                  
+                  <div class="summary">
+                      <div class="stat">
+                          <div class="stat-number">{total_findings}</div>
+                          <div class="stat-label">Total Findings</div>
+                      </div>
+                  </div>
+                  
+                  <div class="content">
+          """
+                  
+                  if findings:
+                      html += """
+                      <table class="findings-table">
+                          <thead>
+                              <tr>
+                                  <th>Rule ID</th>
+                                  <th>Severity</th>
+                                  <th>Location</th>
+                                  <th>Message</th>
+                              </tr>
+                          </thead>
+                          <tbody>
+                      """
+                      
+                      for finding in findings:
+                          severity_class = f'severity-{finding["severity"].lower()}'
+                          html += f"""
+                              <tr>
+                                  <td class="location">{finding['rule_id']}</td>
+                                  <td><span class="severity-badge {severity_class}">{finding['severity'].upper()}</span></td>
+                                  <td class="location">{finding['location']}</td>
+                                  <td>{finding['message'][:200]}{'...' if len(finding['message']) > 200 else ''}</td>
+                              </tr>
+                          """
+                      
+                      html += """
+                          </tbody>
+                      </table>
+                      """
+                  else:
+                      html += '<div class="no-findings">✅ No security issues found!</div>'
+                  
+                  html += """
+                  </div>
+              </div>
           </body>
           </html>
           """
                   
-                  with open(html_file, 'w') as f:
+                  with open(html_file, 'w', encoding='utf-8') as f:
                       f.write(html)
                   print(f"✅ Generated {html_file}")
               except Exception as e:
-                  print(f"⚠️  Error processing bandit.json: {e}")
+                  print(f"⚠️  Error processing {bandit_file}: {e}")
           
+          # 生成汇总报告
+          total_all = sum(r['total'] for r in all_results.values())
+          html_summary = f"""<!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>SAST Security Scan Summary</title>
+              <style>
+                  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+                  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #f5f7fa; padding: 20px; }}
+                  .container {{ max-width: 1200px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; }}
+                  header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; }}
+                  h1 {{ font-size: 28px; margin-bottom: 10px; }}
+                  .summary {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; padding: 30px; }}
+                  .card {{ background: #f8f9fa; border-radius: 8px; padding: 20px; border-left: 4px solid #667eea; }}
+                  .card h3 {{ color: #333; margin-bottom: 15px; font-size: 18px; }}
+                  .stat-number {{ font-size: 48px; font-weight: bold; color: #667eea; margin: 10px 0; }}
+                  .stat-label {{ color: #6c757d; font-size: 14px; }}
+                  .links {{ padding: 20px; background: #f8f9fa; border-top: 1px solid #e0e0e0; }}
+                  .links a {{ display: inline-block; margin: 5px 10px 5px 0; padding: 8px 16px; background: #667eea; color: white; text-decoration: none; border-radius: 4px; }}
+                  .links a:hover {{ background: #5568d3; }}
+                  .tool-card {{ border-left-color: #dc3545; }} 
+                  .tool-card.no-issues {{ border-left-color: #28a745; }}
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <header>
+                      <h1>🔒 SAST Security Scan Summary</h1>
+                      <p>Total Findings: {total_all}</p>
+                  </header>
+                  
+                  <div class="summary">
+          """
+          
+          for sarif_file, result in all_results.items():
+              card_class = 'tool-card' if result['total'] > 0 else 'tool-card no-issues'
+              html_summary += f"""
+                      <div class="card {card_class}">
+                          <h3>{result['tool']}</h3>
+                          <div class="stat-number">{result['total']}</div>
+                          <div class="stat-label">Findings</div>
+                      </div>
+              """
+          
+          html_summary += """
+                  </div>
+                  
+                  <div class="links">
+                      <h3>📁 Detailed Reports:</h3>
+          """
+          
+          for report_file in sorted(all_results.keys()):
+              # 处理不同的文件扩展名
+              if report_file.endswith('.sarif'):
+                  html_file = report_file.replace('.sarif', '.html')
+              elif report_file.endswith('.json'):
+                  html_file = report_file.replace('.json', '.html')
+              else:
+                  html_file = report_file + '.html'
+              tool_name = all_results[report_file]['tool']
+              html_summary += f'                      <a href="{html_file}" target="_blank">{tool_name}</a>\n'
+          
+          html_summary += """
+                  </div>
+              </div>
+          </body>
+          </html>
+          """
+          
+          with open('sast-summary.html', 'w', encoding='utf-8') as f:
+              f.write(html_summary)
+          print("✅ Generated sast-summary.html")
           print("✅ SAST report generation complete")
           PYTHON_SCRIPT
 
@@ -269,11 +486,22 @@ jobs:
       - name: Install frontend dependencies
         run: |
           cd frontend
+          # 尝试使用 npm ci 进行快速、可靠的安装
           if npm ci; then
             echo "✅ npm ci 成功"
           else
             echo "⚠️ npm ci 失败，回退到 npm install"
             npm install
+          fi
+          # 验证 Rollup 可选依赖是否已安装（这些依赖已在 package.json 的 optionalDependencies 中声明）
+          echo "验证 Rollup 可选依赖安装状态..."
+          if [ -d "node_modules/@rollup/rollup-linux-x64-gnu" ] || [ -d "node_modules/rollup/node_modules/@rollup/rollup-linux-x64-gnu" ]; then
+            echo "✅ @rollup/rollup-linux-x64-gnu 已安装"
+          else
+            echo "⚠️ @rollup/rollup-linux-x64-gnu 未找到（npm 可选依赖 bug），尝试手动安装..."
+            # 如果 npm ci 没有安装可选依赖（已知 bug），手动安装它们
+            npm install @rollup/rollup-linux-x64-gnu@^4.52.5 --save-optional --legacy-peer-deps || echo "⚠️  手动安装失败"
+            npm install @rollup/rollup-linux-x64-musl@^4.52.5 --save-optional --legacy-peer-deps || echo "⚠️  手动安装失败"
           fi
 
       - name: Cache frontend test results
@@ -286,18 +514,15 @@ jobs:
             vitest-${{ runner.os }}-
 
       - name: Run frontend unit tests (with coverage)
-        continue-on-error: true
-        env:
-          CI: true
-          NODE_OPTIONS: "--max-old-space-size=8192 --expose-gc"
-          NODE_ENV: "test"
         run: |
           cd frontend
-          npm run test:ci || npm run test:unit || true
+          # 尝试运行带覆盖率的测试，如果失败则运行不带覆盖率的测试
+          # 使用更保守的内存设置和更短的超时时间
+          npm run test:unit:coverage || npm run test:unit || true
           
           # 验证覆盖率文件是否生成
           if [ ! -f "coverage/coverage-summary.json" ]; then
-            echo "⚠️  覆盖率文件未生成，创建占位符"
+            echo "⚠️  覆盖率文件未生成，创建一个最小的覆盖率文件"
             mkdir -p coverage
             cat > coverage/coverage-summary.json << 'EOF'
           {
@@ -309,10 +534,18 @@ jobs:
             }
           }
           EOF
-            echo "✅ 已创建占位符覆盖率文件"
+            echo "✅ 已创建占位符覆盖率文件（测试可能失败，覆盖率为0%）"
           else
             echo "✅ 覆盖率文件已生成"
+            # 显示覆盖率文件内容的前几行
+            head -n 20 coverage/coverage-summary.json || true
           fi
+          cd ..
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--max-old-space-size=8192 --expose-gc"
+          NODE_ENV: "test"
+          UV_THREADPOOL_SIZE: "2"  # 限制线程池大小，减少内存占用
 
       - name: Run user service tests
         run: |
@@ -344,7 +577,7 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
 
-      - name: Generate coverage summary
+      - name: Check coverage threshold
         continue-on-error: true
         run: |
           python3 << 'PYTHON_SCRIPT'
@@ -352,6 +585,60 @@ jobs:
           import json
           import os
           
+          total_covered = 0
+          total_lines = 0
+          
+          # 后端服务覆盖率
+          for xml_file in ['coverage-user.xml', 'coverage-activity.xml', 'coverage-notification.xml']:
+              if os.path.exists(xml_file):
+                  try:
+                      tree = ET.parse(xml_file)
+                      root = tree.getroot()
+                      covered = int(root.attrib.get('lines-covered', 0))
+                      lines = int(root.attrib.get('lines-valid', 0))
+                      total_covered += covered
+                      total_lines += lines
+                  except Exception as e:
+                      print(f"⚠️  Could not parse {xml_file}: {e}")
+          
+          # 前端覆盖率
+          frontend_file = 'frontend/coverage/coverage-summary.json'
+          if os.path.exists(frontend_file):
+              try:
+                  with open(frontend_file, 'r', encoding='utf-8') as f:
+                      frontend_data = json.load(f)
+                  
+                  frontend_total = frontend_data.get('total', {})
+                  frontend_lines = frontend_total.get('lines', {})
+                  frontend_covered = frontend_lines.get('covered', 0)
+                  frontend_total_lines = frontend_lines.get('total', 0)
+                  
+                  if frontend_total_lines > 0:
+                      total_covered += frontend_covered
+                      total_lines += frontend_total_lines
+                      frontend_pct = (frontend_covered / frontend_total_lines * 100)
+                      print(f"前端覆盖率: {frontend_pct:.2f}% ({frontend_covered}/{frontend_total_lines})")
+              except Exception as e:
+                  print(f"Warning: Could not parse frontend coverage: {e}")
+          
+          pct = (total_covered / total_lines * 100) if total_lines else 0
+          print(f"Aggregate coverage (后端 + 前端): {pct:.2f}%")
+          if pct < 85:
+              print(f"⚠️  Coverage is below target (85%), current: {pct:.2f}%")
+              print("This is a warning and will not block the CI pipeline.")
+          else:
+              print(f"✅ Coverage meets target: {pct:.2f}%")
+          PYTHON_SCRIPT
+
+      - name: Generate combined coverage HTML report
+        continue-on-error: true
+        run: |
+          python3 << 'PYTHON_SCRIPT'
+          import xml.etree.ElementTree as ET
+          import json
+          import os
+          
+          # 解析所有覆盖率 XML 文件
           coverage_data = {}
           total_covered = 0
           total_lines = 0
@@ -378,42 +665,170 @@ jobs:
                   except Exception as e:
                       print(f"⚠️  Could not parse {xml_file}: {e}")
           
-          # 前端覆盖率
-          frontend_file = 'frontend/coverage/coverage-summary.json'
-          if os.path.exists(frontend_file):
+          # 前端覆盖率（从 Vitest coverage 报告）
+          frontend_coverage_file = 'frontend/coverage/coverage-summary.json'
+          if os.path.exists(frontend_coverage_file):
               try:
-                  with open(frontend_file, 'r') as f:
+                  with open(frontend_coverage_file, 'r', encoding='utf-8') as f:
                       frontend_data = json.load(f)
                   
+                  # 计算前端总覆盖率
                   frontend_total = frontend_data.get('total', {})
                   frontend_lines = frontend_total.get('lines', {})
                   frontend_covered = frontend_lines.get('covered', 0)
                   frontend_total_lines = frontend_lines.get('total', 0)
                   
                   if frontend_total_lines > 0:
-                      frontend_pct = (frontend_covered / frontend_total_lines * 100)
+                      frontend_percentage = (frontend_covered / frontend_total_lines * 100)
                       coverage_data['frontend'] = {
                           'covered': frontend_covered,
                           'total': frontend_total_lines,
-                          'percentage': frontend_pct
+                          'percentage': frontend_percentage
                       }
                       total_covered += frontend_covered
                       total_lines += frontend_total_lines
-                      print(f"✅ 前端覆盖率: {frontend_pct:.2f}%")
+                      print(f"✅ 前端覆盖率: {frontend_percentage:.2f}% ({frontend_covered}/{frontend_total_lines})")
                   else:
-                      print("⚠️  前端测试失败，覆盖率为 0%")
-                      coverage_data['frontend'] = {'covered': 0, 'total': 0, 'percentage': 0}
+                      print("⚠️  前端测试可能失败，覆盖率为 0%（已创建占位符文件）")
+                      coverage_data['frontend'] = {
+                          'covered': 0,
+                          'total': 0,
+                          'percentage': 0
+                      }
               except Exception as e:
                   print(f"⚠️  无法解析前端覆盖率: {e}")
-          
-          aggregate_pct = (total_covered / total_lines * 100) if total_lines > 0 else 0
-          print(f"\n📊 总体覆盖率: {aggregate_pct:.2f}%")
-          
-          if aggregate_pct < 80:
-              print(f"⚠️  覆盖率低于目标 (80%)")
           else:
-              print(f"✅ 覆盖率达标")
+              print("⚠️  前端覆盖率文件不存在（这不应该发生，因为应该创建了占位符）")
+              # 即使文件不存在，也添加一个占位符条目
+              coverage_data['frontend'] = {
+                  'covered': 0,
+                  'total': 0,
+                  'percentage': 0
+              }
+          
+          aggregate_percentage = (total_covered / total_lines * 100) if total_lines > 0 else 0
+          
+          # 生成汇总 HTML 报告
+          html = f"""<!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>Code Coverage Report</title>
+              <style>
+                  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+                  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #f5f7fa; padding: 20px; }}
+                  .container {{ max-width: 1200px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; }}
+                  header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; }}
+                  h1 {{ font-size: 28px; margin-bottom: 10px; }}
+                  .summary {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; padding: 30px; }}
+                  .card {{ background: #f8f9fa; border-radius: 8px; padding: 20px; border-left: 4px solid #667eea; }}
+                  .card.aggregate {{ border-left-color: #28a745; background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); }}
+                  .card h3 {{ color: #333; margin-bottom: 15px; font-size: 18px; }}
+                  .percentage {{ font-size: 48px; font-weight: bold; color: #28a745; margin: 10px 0; }}
+                  .percentage.warning {{ color: #ff9800; }}
+                  .percentage.low {{ color: #f44336; }}
+                  .stats {{ display: flex; justify-content: space-between; margin-top: 10px; color: #666; }}
+                  .progress-bar {{ width: 100%; height: 30px; background: #e0e0e0; border-radius: 15px; overflow: hidden; margin-top: 10px; }}
+                  .progress-fill {{ height: 100%; background: linear-gradient(90deg, #28a745, #4caf50); transition: width 0.3s; }}
+                  .progress-fill.warning {{ background: linear-gradient(90deg, #ff9800, #ffb74d); }}
+                  .progress-fill.low {{ background: linear-gradient(90deg, #f44336, #e57373); }}
+                  .links {{ padding: 20px; background: #f8f9fa; border-top: 1px solid #e0e0e0; }}
+                  .links a {{ display: inline-block; margin: 5px 10px 5px 0; padding: 8px 16px; background: #667eea; color: white; text-decoration: none; border-radius: 4px; }}
+                  .links a:hover {{ background: #5568d3; }}
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <header>
+                      <h1>📊 Code Coverage Report</h1>
+                      <p>Aggregate Coverage: {aggregate_percentage:.2f}%</p>
+                  </header>
+                  
+                  <div class="summary">
+                      <div class="card aggregate">
+                          <h3>Overall Coverage</h3>
+                          <div class="percentage {'warning' if aggregate_percentage < 85 else ''} {'low' if aggregate_percentage < 60 else ''}">
+                              {aggregate_percentage:.2f}%
+                          </div>
+                          <div class="progress-bar">
+                              <div class="progress-fill {'warning' if aggregate_percentage < 85 else ''} {'low' if aggregate_percentage < 60 else ''}" style="width: {aggregate_percentage}%"></div>
+                          </div>
+                          <div class="stats">
+                              <span>Covered: {total_covered:,}</span>
+                              <span>Total: {total_lines:,}</span>
+                          </div>
+                      </div>
+          """
+          
+          for service, data in coverage_data.items():
+              pct = data['percentage']
+              pct_class = 'warning' if pct < 85 else ''
+              pct_class = 'low' if pct < 60 else pct_class
+              
+              html += f"""
+                      <div class="card">
+                          <h3>{service.replace('-', ' ').title()} Service</h3>
+                          <div class="percentage {pct_class}">
+                              {pct:.2f}%
+                          </div>
+                          <div class="progress-bar">
+                              <div class="progress-fill {pct_class}" style="width: {pct}%"></div>
+                          </div>
+                          <div class="stats">
+                              <span>Covered: {data['covered']:,}</span>
+                              <span>Total: {data['total']:,}</span>
+                          </div>
+                      </div>
+              """
+          
+          html += """
+                  </div>
+                  
+                  <div class="links">
+                      <h3>📁 Detailed Reports:</h3>
+                      <a href="coverage-user-html/index.html" target="_blank">User Service Details</a>
+                      <a href="coverage-activity-html/index.html" target="_blank">Activity Service Details</a>
+                      <a href="coverage-notification-html/index.html" target="_blank">Notification Service Details</a>
+          """
+          
+          # 添加前端覆盖率链接（如果存在且有数据）
+          if 'frontend' in coverage_data:
+              if coverage_data['frontend']['total'] > 0:
+                  html += """
+                      <a href="frontend/coverage/index.html" target="_blank">Frontend Details</a>
+          """
+              else:
+                  html += """
+                      <span style="color: #dc3545; padding: 8px 16px;">⚠️ Frontend tests failed - No coverage data</span>
+          """
+          
+          html += """
+                  </div>
+              </div>
+          </body>
+          </html>
+          """
+          
+          with open('coverage-summary.html', 'w', encoding='utf-8') as f:
+              f.write(html)
+          print("✅ Generated coverage-summary.html")
           PYTHON_SCRIPT
+
+      - name: Run frontend build test
+        run: |
+          cd frontend
+          # 验证 Rollup 可选依赖（已在 package.json 中声明，npm ci 应该已安装）
+          if [ ! -d "node_modules/@rollup/rollup-linux-x64-gnu" ] && [ ! -d "node_modules/rollup/node_modules/@rollup/rollup-linux-x64-gnu" ]; then
+            echo "⚠️ Rollup 可选依赖未找到，尝试手动安装（npm 可选依赖 bug）..."
+            npm install @rollup/rollup-linux-x64-gnu@^4.52.5 --save-optional --legacy-peer-deps || echo "⚠️  手动安装失败"
+            npm install @rollup/rollup-linux-x64-musl@^4.52.5 --save-optional --legacy-peer-deps || echo "⚠️  手动安装失败"
+          else
+            echo "✅ Rollup 可选依赖已存在"
+          fi
+          # 运行构建
+          npm run build
+          echo "✅ Frontend build successful"
 
       - name: Upload coverage artifacts
         uses: actions/upload-artifact@v4
@@ -422,6 +837,7 @@ jobs:
           path: |
             coverage-*.xml
             coverage-*-html/
+            coverage-summary.html
             frontend/coverage/
           if-no-files-found: ignore
           retention-days: 7
@@ -472,8 +888,8 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # 容器安全扫描
-  container_scan:
+  # 容器镜像与K8s清单扫描
+  container_iac_scan:
     runs-on: ubuntu-22.04
     needs: [unit]
     steps:
@@ -486,31 +902,513 @@ jobs:
           docker build -t activity-service:ci ./services/activity || true
           docker build -t notification-service:ci ./services/notification || true
 
-      - name: Trivy scan (user-service)
+      - name: Trivy image scan (user)
         uses: aquasecurity/trivy-action@0.20.0
         with:
           image-ref: user-service:ci
           format: 'json'
           exit-code: '0'
-          output: 'trivy-user.json'
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+          output: 'trivy-user-image.json'
 
-      - name: Trivy scan (activity-service)
+      - name: Trivy image scan (activity)
         uses: aquasecurity/trivy-action@0.20.0
         with:
           image-ref: activity-service:ci
           format: 'json'
           exit-code: '0'
-          output: 'trivy-activity.json'
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+          output: 'trivy-activity-image.json'
+
+      - name: Trivy image scan (notification)
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: notification-service:ci
+          format: 'json'
+          exit-code: '0'
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+          output: 'trivy-notification-image.json'
+
+      - name: Trivy Dockerfile scan (user-service)
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          scan-type: 'fs'
+          scan-ref: './services/user'
+          format: 'json'
+          exit-code: '0'
+          severity: 'CRITICAL,HIGH'
+          output: 'trivy-user-dockerfile.json'
+
+      - name: Trivy Dockerfile scan (activity-service)
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          scan-type: 'fs'
+          scan-ref: './services/activity'
+          format: 'json'
+          exit-code: '0'
+          severity: 'CRITICAL,HIGH'
+          output: 'trivy-activity-dockerfile.json'
+
+      - name: Trivy Dockerfile scan (notification-service)
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          scan-type: 'fs'
+          scan-ref: './services/notification'
+          format: 'json'
+          exit-code: '0'
+          severity: 'CRITICAL,HIGH'
+          output: 'trivy-notification-dockerfile.json'
+
+      - name: Trivy Dockerfile scan (frontend)
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          scan-type: 'fs'
+          scan-ref: './frontend'
+          format: 'json'
+          exit-code: '0'
+          severity: 'CRITICAL,HIGH'
+          output: 'trivy-frontend-dockerfile.json'
+
+      - name: Generate Trivy HTML reports
+        continue-on-error: true
+        run: |
+          python3 << 'PYTHON_SCRIPT'
+          import json
+          import glob
+          import os
+          
+          for json_file in glob.glob('trivy-*.json'):
+              try:
+                  with open(json_file, 'r', encoding='utf-8') as f:
+                      data = json.load(f)
+                  
+                  html_file = json_file.replace('.json', '.html')
+                  
+                  # 统计漏洞
+                  total_vulns = 0
+                  critical_count = 0
+                  high_count = 0
+                  medium_count = 0
+                  low_count = 0
+                  
+                  vulns_list = []
+                  
+                  if 'Results' in data:
+                      for result in data.get('Results', []):
+                          if 'Vulnerabilities' in result:
+                              for vuln in result['Vulnerabilities']:
+                                  total_vulns += 1
+                                  severity = vuln.get('Severity', 'UNKNOWN')
+                                  if severity == 'CRITICAL':
+                                      critical_count += 1
+                                  elif severity == 'HIGH':
+                                      high_count += 1
+                                  elif severity == 'MEDIUM':
+                                      medium_count += 1
+                                  elif severity == 'LOW':
+                                      low_count += 1
+                                  
+                                  vulns_list.append({
+                                      'id': vuln.get('VulnerabilityID', 'N/A'),
+                                      'severity': severity,
+                                      'package': vuln.get('PkgName', 'N/A'),
+                                      'version': vuln.get('InstalledVersion', 'N/A'),
+                                      'title': vuln.get('Title', vuln.get('Description', 'N/A'))[:150],
+                                      'description': vuln.get('Description', 'N/A')
+                                  })
+                  
+                  # 生成 HTML
+                  html = f"""<!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>Trivy Scan Report - {os.path.basename(json_file)}</title>
+              <style>
+                  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+                  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #f5f7fa; padding: 20px; line-height: 1.6; }}
+                  .container {{ max-width: 1400px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; }}
+                  header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; }}
+                  h1 {{ font-size: 28px; margin-bottom: 10px; }}
+                  .subtitle {{ opacity: 0.9; }}
+                  .summary {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; padding: 20px; background: #f8f9fa; }}
+                  .stat-card {{ background: white; padding: 20px; border-radius: 6px; border-left: 4px solid #667eea; }}
+                  .stat-card.critical {{ border-left-color: #dc3545; }}
+                  .stat-card.high {{ border-left-color: #fd7e14; }}
+                  .stat-card.medium {{ border-left-color: #ffc107; }}
+                  .stat-card.low {{ border-left-color: #28a745; }}
+                  .stat-number {{ font-size: 32px; font-weight: bold; margin-bottom: 5px; }}
+                  .stat-label {{ color: #6c757d; font-size: 14px; }}
+                  .vuln-table {{ width: 100%; border-collapse: collapse; }}
+                  .vuln-table th {{ background: #495057; color: white; padding: 12px; text-align: left; font-weight: 600; }}
+                  .vuln-table td {{ padding: 12px; border-bottom: 1px solid #e9ecef; }}
+                  .vuln-table tr:hover {{ background: #f8f9fa; }}
+                  .severity-badge {{ display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; }}
+                  .severity-critical {{ background: #dc3545; color: white; }}
+                  .severity-high {{ background: #fd7e14; color: white; }}
+                  .severity-medium {{ background: #ffc107; color: #212529; }}
+                  .severity-low {{ background: #28a745; color: white; }}
+                  .vuln-id {{ font-family: 'Courier New', monospace; font-size: 13px; }}
+                  .content {{ padding: 20px; }}
+                  .no-vulns {{ text-align: center; padding: 40px; color: #28a745; font-size: 18px; }}
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <header>
+                      <h1>🔍 Trivy Security Scan Report</h1>
+                      <div class="subtitle">{os.path.basename(json_file)}</div>
+                  </header>
+                  
+                  <div class="summary">
+                      <div class="stat-card">
+                          <div class="stat-number">{total_vulns}</div>
+                          <div class="stat-label">Total Vulnerabilities</div>
+                      </div>
+                      <div class="stat-card critical">
+                          <div class="stat-number">{critical_count}</div>
+                          <div class="stat-label">Critical</div>
+                      </div>
+                      <div class="stat-card high">
+                          <div class="stat-number">{high_count}</div>
+                          <div class="stat-label">High</div>
+                      </div>
+                      <div class="stat-card medium">
+                          <div class="stat-number">{medium_count}</div>
+                          <div class="stat-label">Medium</div>
+                      </div>
+                      <div class="stat-card low">
+                          <div class="stat-number">{low_count}</div>
+                          <div class="stat-label">Low</div>
+                      </div>
+                  </div>
+                  
+                  <div class="content">
+          """
+                  
+                  if vulns_list:
+                      # 按严重性排序
+                      severity_order = {'CRITICAL': 0, 'HIGH': 1, 'MEDIUM': 2, 'LOW': 3, 'UNKNOWN': 4}
+                      vulns_list.sort(key=lambda x: (severity_order.get(x['severity'], 99), x['id']))
+                      
+                      html += """
+                      <table class="vuln-table">
+                          <thead>
+                              <tr>
+                                  <th>Vulnerability ID</th>
+                                  <th>Severity</th>
+                                  <th>Package</th>
+                                  <th>Version</th>
+                                  <th>Description</th>
+                              </tr>
+                          </thead>
+                          <tbody>
+                      """
+                      
+                      for vuln in vulns_list:
+                          severity_class = f'severity-{vuln["severity"].lower()}'
+                          html += f"""
+                              <tr>
+                                  <td class="vuln-id">{vuln['id']}</td>
+                                  <td><span class="severity-badge {severity_class}">{vuln['severity']}</span></td>
+                                  <td><strong>{vuln['package']}</strong></td>
+                                  <td>{vuln['version']}</td>
+                                  <td>{vuln['title']}</td>
+                              </tr>
+                          """
+                      
+                      html += """
+                          </tbody>
+                      </table>
+                      """
+                  else:
+                      html += '<div class="no-vulns">✅ No vulnerabilities found!</div>'
+                  
+                  html += """
+                  </div>
+              </div>
+          </body>
+          </html>
+          """
+                  
+                  with open(html_file, 'w', encoding='utf-8') as f:
+                      f.write(html)
+                  print(f"✅ Generated {html_file}")
+              except Exception as e:
+                  print(f"⚠️  Error processing {json_file}: {e}")
+          PYTHON_SCRIPT
+
+      - name: Checkov scan (Dockerfiles)
+        continue-on-error: true
+        run: |
+          pip install checkov
+          checkov -d . --framework dockerfile --output cli --output-file-path checkov-dockerfile.txt || true
+
+      - name: Checkov scan (K8s manifests)
+        continue-on-error: true
+        run: |
+          checkov -d k8s --framework kubernetes --output cli --output-file-path checkov-k8s.txt || true
 
       - name: Upload scan results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: container_scan_results
-          path: trivy-*.json
+          name: container_iac_scan_results
+          path: |
+            trivy-*.json
+            trivy-*.html
+            checkov-*.txt
           if-no-files-found: ignore
           retention-days: 7
 
-  # 性能测试
+  # DAST：对本地集成环境进行基线动态扫描
+  dast:
+    runs-on: ubuntu-22.04
+    needs: [integration]
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Ensure integration stack up
+        run: docker compose -f docker-compose.test.yml up -d --build
+
+      - name: Wait for services to be ready
+        run: |
+          echo "等待服务启动..."
+          for i in {1..30}; do
+            if curl -fsS http://localhost:8001/api/v1/health/ > /dev/null 2>&1; then
+              echo "✅ user-service 已就绪"
+              break
+            fi
+            echo "等待中... ($i/30)"
+            sleep 2
+          done
+          
+          # 验证服务是否真的可用
+          curl -fsS http://localhost:8001/api/v1/health/ || (echo "❌ user-service 未就绪" && exit 1)
+
+      - name: Prepare ZAP working directory
+        run: |
+          # 设置工作目录权限，确保 ZAP Docker 容器（以 root 运行）可以写入
+          # ZAP action 会将当前目录挂载到 Docker 容器的 /zap/wrk
+          # 由于容器以 root 运行，需要确保目录对所有用户可写
+          
+          # 创建 .zap 目录（如果不存在）
+          mkdir -p .zap/work
+          
+          # 设置工作目录权限（递归设置所有文件和目录）
+          # 使用 sudo 如果可用，否则使用普通 chmod
+          if command -v sudo &> /dev/null; then
+            sudo chmod -R 777 . || chmod -R 777 . || true
+            sudo chown -R $USER:$USER . || true
+          else
+            chmod -R 777 . || true
+          fi
+          
+          # 确保规则文件可读
+          chmod 644 .zap/rules.tsv || true
+          
+          # 创建 ZAP 配置文件目录并设置权限
+          mkdir -p .zap
+          chmod -R 777 .zap || true
+          
+          # 预先创建可能需要的文件并设置权限
+          touch zap.yaml zap.yaml.bak 2>/dev/null || true
+          chmod 666 zap.yaml zap.yaml.bak 2>/dev/null || true
+          
+          # 验证权限设置
+          echo "当前工作目录权限:"
+          ls -la . | head -10
+          echo ""
+          echo ".zap 目录权限:"
+          ls -la .zap/ 2>/dev/null || echo "目录不存在"
+
+      - name: OWASP ZAP baseline scan (user-service)
+        continue-on-error: true
+        uses: zaproxy/action-baseline@v0.10.0
+        with:
+          target: 'http://localhost:8001'
+          rules_file_name: '.zap/rules.tsv'
+          cmd_options: '-a -m 5'  # 移除 -I，使用默认的 Automation Framework
+          fail_action: false
+          allow_issue_writing: false
+          # 注意：不设置 artifact_name，让 action 使用默认行为（可能会失败，但不影响后续步骤）
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate ZAP JSON summary
+        continue-on-error: true
+        run: |
+          python3 << 'PYTHON_SCRIPT'
+          import json
+          import os
+          
+          if os.path.exists('report_json.json'):
+              try:
+                  with open('report_json.json', 'r', encoding='utf-8') as f:
+                      data = json.load(f)
+                  
+                  # 解析 ZAP JSON 报告
+                  site = data.get('site', [])
+                  total_alerts = 0
+                  alerts_by_severity = {'High': 0, 'Medium': 0, 'Low': 0, 'Informational': 0}
+                  alerts_list = []
+                  
+                  for site_item in site:
+                      alerts = site_item.get('alerts', [])
+                      total_alerts += len(alerts)
+                      
+                      for alert in alerts:
+                          severity = alert.get('riskcode', 'Informational')
+                          severity_map = {'3': 'High', '2': 'Medium', '1': 'Low', '0': 'Informational'}
+                          severity_name = severity_map.get(str(severity), 'Informational')
+                          alerts_by_severity[severity_name] = alerts_by_severity.get(severity_name, 0) + 1
+                          
+                          alerts_list.append({
+                              'name': alert.get('name', 'N/A'),
+                              'risk': severity_name,
+                              'confidence': alert.get('confidence', 'N/A'),
+                              'url': alert.get('url', 'N/A'),
+                              'description': alert.get('desc', 'N/A')[:200]
+                          })
+                  
+                  # 生成汇总 HTML
+                  html = f"""<!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>ZAP Security Scan Summary</title>
+              <style>
+                  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+                  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #f5f7fa; padding: 20px; }}
+                  .container {{ max-width: 1400px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; }}
+                  header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; }}
+                  h1 {{ font-size: 28px; margin-bottom: 10px; }}
+                  .summary {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; padding: 20px; background: #f8f9fa; }}
+                  .stat-card {{ background: white; padding: 20px; border-radius: 6px; border-left: 4px solid #667eea; }}
+                  .stat-card.high {{ border-left-color: #dc3545; }}
+                  .stat-card.medium {{ border-left-color: #fd7e14; }}
+                  .stat-card.low {{ border-left-color: #ffc107; }}
+                  .stat-card.info {{ border-left-color: #6c757d; }}
+                  .stat-number {{ font-size: 32px; font-weight: bold; margin-bottom: 5px; }}
+                  .stat-label {{ color: #6c757d; font-size: 14px; }}
+                  .alerts-table {{ width: 100%; border-collapse: collapse; }}
+                  .alerts-table th {{ background: #495057; color: white; padding: 12px; text-align: left; font-weight: 600; }}
+                  .alerts-table td {{ padding: 12px; border-bottom: 1px solid #e9ecef; }}
+                  .alerts-table tr:hover {{ background: #f8f9fa; }}
+                  .risk-badge {{ display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; }}
+                  .risk-high {{ background: #dc3545; color: white; }}
+                  .risk-medium {{ background: #fd7e14; color: white; }}
+                  .risk-low {{ background: #ffc107; color: #212529; }}
+                  .risk-info {{ background: #6c757d; color: white; }}
+                  .url {{ font-family: 'Courier New', monospace; font-size: 12px; color: #667eea; word-break: break-all; }}
+                  .content {{ padding: 20px; }}
+                  .no-alerts {{ text-align: center; padding: 40px; color: #28a745; font-size: 18px; }}
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <header>
+                      <h1>🔒 OWASP ZAP Security Scan Summary</h1>
+                      <p>Total Alerts: {total_alerts}</p>
+                  </header>
+                  
+                  <div class="summary">
+                      <div class="stat-card">
+                          <div class="stat-number">{total_alerts}</div>
+                          <div class="stat-label">Total Alerts</div>
+                      </div>
+                      <div class="stat-card high">
+                          <div class="stat-number">{alerts_by_severity.get('High', 0)}</div>
+                          <div class="stat-label">High Risk</div>
+                      </div>
+                      <div class="stat-card medium">
+                          <div class="stat-number">{alerts_by_severity.get('Medium', 0)}</div>
+                          <div class="stat-label">Medium Risk</div>
+                      </div>
+                      <div class="stat-card low">
+                          <div class="stat-number">{alerts_by_severity.get('Low', 0)}</div>
+                          <div class="stat-label">Low Risk</div>
+                      </div>
+                      <div class="stat-card info">
+                          <div class="stat-number">{alerts_by_severity.get('Informational', 0)}</div>
+                          <div class="stat-label">Informational</div>
+                      </div>
+                  </div>
+                  
+                  <div class="content">
+          """
+                  
+                  if alerts_list:
+                      html += """
+                      <table class="alerts-table">
+                          <thead>
+                              <tr>
+                                  <th>Alert Name</th>
+                                  <th>Risk Level</th>
+                                  <th>Confidence</th>
+                                  <th>URL</th>
+                                  <th>Description</th>
+                              </tr>
+                          </thead>
+                          <tbody>
+                      """
+                      
+                      for alert in alerts_list:
+                          risk_class = f'risk-{alert["risk"].lower()}'
+                          html += f"""
+                              <tr>
+                                  <td><strong>{alert['name']}</strong></td>
+                                  <td><span class="risk-badge {risk_class}">{alert['risk']}</span></td>
+                                  <td>{alert['confidence']}</td>
+                                  <td class="url">{alert['url'][:100]}{'...' if len(alert['url']) > 100 else ''}</td>
+                                  <td>{alert['description']}</td>
+                              </tr>
+                          """
+                      
+                      html += """
+                          </tbody>
+                      </table>
+                      """
+                  else:
+                      html += '<div class="no-alerts">✅ No security alerts found!</div>'
+                  
+                  html += """
+                  </div>
+              </div>
+          </body>
+          </html>
+          """
+                  
+                  with open('zap-summary.html', 'w', encoding='utf-8') as f:
+                      f.write(html)
+                  print("✅ Generated zap-summary.html")
+              except Exception as e:
+                  print(f"⚠️  Error processing ZAP JSON: {e}")
+          PYTHON_SCRIPT
+
+      - name: Upload ZAP report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-report
+          path: |
+            report_html.html
+            report_json.json
+            report_md.md
+            zap-summary.html
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # 性能测试，使用接近生产的进程模型
   performance:
     runs-on: ubuntu-22.04
     needs: [integration]
@@ -518,35 +1416,695 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Start performance environment
+      - name: Launch perf env (gunicorn)
         run: docker compose -f docker-compose.perf.yml up -d --build
 
-      - name: Wait for services
+      - name: Wait for services to be ready
         run: |
-          for i in {1..60}; do
-            curl -fsS http://localhost:8001/api/v1/health/ && exit 0 || sleep 2
+          echo "等待性能测试环境服务启动..."
+          for i in {1..90}; do
+            if curl -fsS http://localhost:8001/api/v1/health/ > /dev/null 2>&1 && \
+               curl -fsS http://localhost:8002/api/v1/health/ > /dev/null 2>&1 && \
+               curl -fsS http://localhost:8003/api/v1/health/ > /dev/null 2>&1; then
+              echo "✅ 所有服务健康检查通过"
+              # 额外等待几秒确保服务完全就绪
+              sleep 5
+              echo "✅ 所有服务已就绪"
+              break
+            fi
+            echo "等待中... ($i/90)"
+            sleep 2
           done
+          
+          # 验证服务是否真的可用（多次尝试）
+          echo "验证服务可用性..."
+          for i in {1..5}; do
+            if curl -fsS http://localhost:8001/api/v1/health/ && \
+               curl -fsS http://localhost:8002/api/v1/health/ && \
+               curl -fsS http://localhost:8003/api/v1/health/; then
+              echo "✅ 所有服务验证通过"
+              exit 0
+            fi
+            echo "验证失败，重试... ($i/5)"
+            sleep 2
+          done
+          
+          echo "❌ 服务验证失败"
+          curl -fsS http://localhost:8001/api/v1/health/ || echo "❌ user-service 未就绪"
+          curl -fsS http://localhost:8002/api/v1/health/ || echo "❌ activity-service 未就绪"
+          curl -fsS http://localhost:8003/api/v1/health/ || echo "❌ notification-service 未就绪"
+          exit 1
 
       - name: Install k6
         run: |
           sudo gpg -k
-          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
-            --keyserver hkp://keyserver.ubuntu.com:80 \
-            --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
-          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | \
-            sudo tee /etc/apt/sources.list.d/k6.list
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
           sudo apt-get update
           sudo apt-get install -y k6
 
-      - name: Run k6 tests
-        run: k6 run tests/perf/k6-load.js || true
+      - name: Verify target endpoint before k6 test
         continue-on-error: true
+        run: |
+          echo "验证 k6 测试目标端点..."
+          # 验证 activity-service 端点（k6 测试的目标）
+          for i in {1..10}; do
+            if curl -fsS http://localhost:8002/api/v1/activities/ > /dev/null 2>&1; then
+              echo "✅ activity-service 端点验证成功"
+              # 额外测试一次确保稳定
+              sleep 2
+              curl -fsS http://localhost:8002/api/v1/activities/ > /dev/null 2>&1 && echo "✅ 端点稳定，可以开始 k6 测试" && exit 0
+            fi
+            echo "端点验证失败，重试... ($i/10)"
+            sleep 2
+          done
+          echo "⚠️  端点验证失败，但继续运行 k6 测试"
 
-      - name: Upload performance results
+      - name: k6 load test
+        continue-on-error: true
+        run: |
+          echo "开始 k6 负载测试..."
+          # 添加重试机制，如果第一次失败，等待后重试
+          # 使用 summary 输出格式，它会在测试结束时输出一个包含所有指标的 JSON 对象
+          k6 run --out json=k6-results.json --summary-export=k6-summary.json tests/perf/k6-load.js || {
+            echo "⚠️  k6 测试失败，等待 10 秒后重试..."
+            sleep 10
+            k6 run --out json=k6-results.json --summary-export=k6-summary.json tests/perf/k6-load.js || echo "⚠️  k6 测试重试后仍然失败"
+          }
+          # 验证输出文件
+          if [ -f k6-summary.json ]; then
+            echo "✅ k6 summary 文件已生成"
+          fi
+          if [ -f k6-results.json ]; then
+            echo "✅ k6 results 文件已生成"
+            # 显示文件大小和前几行，用于调试
+            echo "文件大小: $(wc -c < k6-results.json) bytes"
+            echo "前 3 行:"
+            head -n 3 k6-results.json || echo "无法读取文件"
+          fi
+
+      - name: Generate k6 summary
+        continue-on-error: true
+        run: |
+          python3 << 'PYTHON_SCRIPT'
+          import json
+          import os
+          
+          k6_files = ['k6-summary.json', 'k6-results.json']  # 优先使用 summary，因为它更可靠
+          k6_data = None
+          used_file = None
+          
+          for k6_file in k6_files:
+              if os.path.exists(k6_file):
+                  file_size = os.path.getsize(k6_file)
+                  print(f"📄 检查文件: {k6_file} (大小: {file_size} bytes)")
+                  
+                  try:
+                      with open(k6_file, 'r', encoding='utf-8') as f:
+                          content = f.read().strip()
+                      
+                      if not content:
+                          print(f"⚠️  {k6_file} 文件为空，跳过")
+                          continue
+                      
+                      # k6 的 JSON 输出可能是 JSONL 格式（每行一个 JSON 对象）
+                      # 尝试解析为单个 JSON 对象
+                      try:
+                          k6_data = json.loads(content)
+                          if 'metrics' in k6_data:
+                              used_file = k6_file
+                              print(f"✅ 成功解析 {k6_file} (单个 JSON 对象，包含 metrics)")
+                              break
+                          else:
+                              print(f"⚠️  {k6_file} 是有效的 JSON，但不包含 metrics 字段")
+                              k6_data = None
+                      except json.JSONDecodeError as e:
+                          print(f"⚠️  {k6_file} 不是单个 JSON 对象，尝试作为 JSONL 解析...")
+                          # 如果是 JSONL 格式，读取所有行
+                          lines = [line.strip() for line in content.split('\n') if line.strip()]
+                          print(f"   发现 {len(lines)} 行数据")
+                          
+                          if lines:
+                              # 从后往前查找包含 metrics 的行
+                              found = False
+                              for i, line in enumerate(reversed(lines)):
+                                  try:
+                                      data = json.loads(line)
+                                      if 'metrics' in data:
+                                          k6_data = data
+                                          used_file = k6_file
+                                          print(f"✅ 成功解析 {k6_file} (JSONL 格式，第 {len(lines)-i} 行包含 metrics)")
+                                          found = True
+                                          break
+                                  except json.JSONDecodeError:
+                                      continue
+                              
+                              if not found and lines:
+                                  # 如果没找到包含 metrics 的行，尝试解析最后一行
+                                  try:
+                                      k6_data = json.loads(lines[-1])
+                                      used_file = k6_file
+                                      print(f"✅ 成功解析 {k6_file} (JSONL 格式，使用最后一行)")
+                                  except json.JSONDecodeError as e2:
+                                      print(f"⚠️  无法解析最后一行: {e2}")
+                      
+                      if k6_data and 'metrics' in k6_data:
+                          break
+                      
+                  except Exception as e:
+                      print(f"⚠️  读取 {k6_file} 时出错: {e}")
+                      import traceback
+                      traceback.print_exc()
+          
+          if k6_data and 'metrics' in k6_data:
+              try:
+                  # 解析 k6 JSON 结果
+                  metrics = k6_data.get('metrics', {})
+                  
+                  # 调试：打印完整的数据结构（前1000个字符）
+                  import json
+                  debug_str = json.dumps(k6_data, indent=2)[:2000]  # 只打印前2000个字符
+                  print(f"📊 k6_data 结构（前2000字符）:\n{debug_str}")
+                  print(f"📊 Metrics 键: {list(metrics.keys())[:20]}")  # 显示前20个键
+                  
+                  # 提取关键指标
+                  http_reqs = metrics.get('http_reqs', {})
+                  http_req_duration = metrics.get('http_req_duration', {})
+                  http_req_failed = metrics.get('http_req_failed', {})
+                  
+                  # 调试：打印指标结构（完整）
+                  print(f"📊 http_reqs 类型: {type(http_reqs)}")
+                  if http_reqs:
+                      print(f"📊 http_reqs 键: {list(http_reqs.keys())}")
+                      print(f"📊 http_reqs 内容: {json.dumps(http_reqs, indent=2)[:500]}")
+                      if 'values' in http_reqs and isinstance(http_reqs['values'], dict):
+                          print(f"📊 http_reqs.values 键: {list(http_reqs['values'].keys())}")
+                      if 'count' in http_reqs:
+                          print(f"📊 http_reqs.count = {http_reqs['count']}")
+                  
+                  print(f"📊 http_req_duration 类型: {type(http_req_duration)}")
+                  if http_req_duration:
+                      print(f"📊 http_req_duration 键: {list(http_req_duration.keys())}")
+                      if 'avg' in http_req_duration:
+                          print(f"📊 http_req_duration.avg = {http_req_duration['avg']}")
+                  
+                  # k6 summary-export 格式：metrics.http_reqs.values.count 或 metrics.http_reqs.count
+                  # k6 JSON output 格式：metrics.http_reqs.values.count
+                  # 需要检查实际的数据结构
+                  total_requests = 0
+                  if http_reqs:
+                      # 尝试多种可能的路径
+                      if isinstance(http_reqs, dict):
+                          # 方式1: 直接 count (summary-export 可能格式)
+                          if 'count' in http_reqs:
+                              total_requests = http_reqs['count']
+                              print(f"📊 方式1: http_reqs.count = {total_requests}")
+                          # 方式2: values.count (JSON output 和 summary-export 常用格式)
+                          elif 'values' in http_reqs:
+                              if isinstance(http_reqs['values'], dict):
+                                  total_requests = http_reqs['values'].get('count', 0)
+                                  print(f"📊 方式2: http_reqs.values.count = {total_requests}")
+                              elif isinstance(http_reqs['values'], list) and len(http_reqs['values']) > 0:
+                                  # 如果 values 是列表，可能是时间序列数据
+                                  total_requests = len(http_reqs['values'])
+                                  print(f"📊 方式3: http_reqs.values (列表长度) = {total_requests}")
+                          # 方式3: 从 rate 计算（如果 rate 和时间窗口存在）
+                          elif 'rate' in http_reqs:
+                              # 尝试从 rate 估算，但这不是准确的方法
+                              print(f"⚠️  只有 rate 字段，无法准确计算 count")
+                              total_requests = 0
+                          else:
+                              # 打印完整结构以便调试
+                              print(f"⚠️  无法从 http_reqs 提取 count，完整结构: {json.dumps(http_reqs, indent=2)[:500]}")
+                      else:
+                          print(f"⚠️  http_reqs 不是字典类型: {type(http_reqs)}")
+                  else:
+                      print("⚠️  http_reqs 不存在或为空")
+                  
+                  print(f"📊 最终 total_requests = {total_requests}")
+                  
+                  # 提取响应时间指标
+                  # k6 的时间单位：summary-export 通常是毫秒，JSON output 是微秒
+                  def convert_to_ms(value):
+                      """将时间值转换为毫秒"""
+                      if value == 0:
+                          return 0
+                      # 如果值很大（> 10000），可能是微秒，转换为毫秒
+                      if value > 10000:
+                          return value / 1000
+                      # 如果值非常大（> 1000000），可能是纳秒，转换为毫秒
+                      elif value > 1000000:
+                          return value / 1000000
+                      # 否则假设已经是毫秒
+                      return value
+                  
+                  # 提取响应时间指标
+                  avg_duration = min_duration = max_duration = p95_duration = p99_duration = 0
+                  if http_req_duration and isinstance(http_req_duration, dict):
+                      # 尝试多种可能的路径
+                      if 'values' in http_req_duration and isinstance(http_req_duration['values'], dict):
+                          # 最常见格式：values 字典
+                          values = http_req_duration['values']
+                          avg_duration = convert_to_ms(values.get('avg', 0))
+                          min_duration = convert_to_ms(values.get('min', 0))
+                          max_duration = convert_to_ms(values.get('max', 0))
+                          p95_duration = convert_to_ms(values.get('p(95)', values.get('p95', 0)))
+                          p99_duration = convert_to_ms(values.get('p(99)', values.get('p99', 0)))
+                          print(f"📊 使用 values 格式提取响应时间: avg={avg_duration:.2f}ms")
+                      elif 'avg' in http_req_duration:
+                          # 直接字段格式
+                          avg_duration = convert_to_ms(http_req_duration.get('avg', 0))
+                          min_duration = convert_to_ms(http_req_duration.get('min', 0))
+                          max_duration = convert_to_ms(http_req_duration.get('max', 0))
+                          p95_duration = convert_to_ms(http_req_duration.get('p(95)', http_req_duration.get('p95', 0)))
+                          p99_duration = convert_to_ms(http_req_duration.get('p(99)', http_req_duration.get('p99', 0)))
+                          print(f"📊 使用直接字段格式提取响应时间: avg={avg_duration:.2f}ms")
+                      else:
+                          print(f"⚠️  无法从 http_req_duration 提取数据，结构: {list(http_req_duration.keys())}")
+                          print(f"📊 http_req_duration 内容: {json.dumps(http_req_duration, indent=2)[:500]}")
+                  else:
+                      print(f"⚠️  http_req_duration 不存在或类型错误: {type(http_req_duration)}")
+                  
+                  # 提取失败率
+                  failed_rate = 0
+                  if http_req_failed and isinstance(http_req_failed, dict):
+                      # 尝试多种可能的路径
+                      if 'values' in http_req_failed and isinstance(http_req_failed['values'], dict):
+                          # values 格式
+                          failed_rate = http_req_failed['values'].get('rate', 0) * 100
+                          print(f"📊 使用 values 格式提取失败率: {failed_rate:.2f}%")
+                      elif 'rate' in http_req_failed:
+                          # 直接字段格式
+                          failed_rate = http_req_failed['rate'] * 100
+                          print(f"📊 使用直接字段格式提取失败率: {failed_rate:.2f}%")
+                      else:
+                          print(f"⚠️  无法从 http_req_failed 提取 rate，结构: {list(http_req_failed.keys())}")
+                          print(f"📊 http_req_failed 内容: {json.dumps(http_req_failed, indent=2)[:500]}")
+                  else:
+                      print(f"⚠️  http_req_failed 不存在或类型错误: {type(http_req_failed)}")
+                  
+                  # 调试输出
+                  print(f"📊 解析结果:")
+                  print(f"   Total Requests: {total_requests}")
+                  print(f"   Avg Duration: {avg_duration:.2f}ms")
+                  print(f"   Failed Rate: {failed_rate:.2f}%")
+                  
+                  # 生成 HTML 汇总
+                  html = f"""<!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>k6 Performance Test Summary</title>
+              <style>
+                  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+                  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #f5f7fa; padding: 20px; }}
+                  .container {{ max-width: 1400px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; }}
+                  header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; }}
+                  h1 {{ font-size: 28px; margin-bottom: 10px; }}
+                  .summary {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; padding: 20px; background: #f8f9fa; }}
+                  .stat-card {{ background: white; padding: 20px; border-radius: 6px; border-left: 4px solid #667eea; }}
+                  .stat-number {{ font-size: 32px; font-weight: bold; margin-bottom: 5px; }}
+                  .stat-label {{ color: #6c757d; font-size: 14px; }}
+                  .content {{ padding: 20px; }}
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <header>
+                      <h1>⚡ k6 Performance Test Summary</h1>
+                      <p>Total Requests: {total_requests:,}</p>
+                  </header>
+                  
+                  <div class="summary">
+                      <div class="stat-card">
+                          <div class="stat-number">{total_requests:,}</div>
+                          <div class="stat-label">Total Requests</div>
+                      </div>
+                      <div class="stat-card">
+                          <div class="stat-number">{avg_duration:.0f}ms</div>
+                          <div class="stat-label">Avg Duration</div>
+                      </div>
+                      <div class="stat-card">
+                          <div class="stat-number">{min_duration:.0f}ms</div>
+                          <div class="stat-label">Min Duration</div>
+                      </div>
+                      <div class="stat-card">
+                          <div class="stat-number">{max_duration:.0f}ms</div>
+                          <div class="stat-label">Max Duration</div>
+                      </div>
+                      <div class="stat-card">
+                          <div class="stat-number">{p95_duration:.0f}ms</div>
+                          <div class="stat-label">P95 Duration</div>
+                      </div>
+                      <div class="stat-card">
+                          <div class="stat-number">{p99_duration:.0f}ms</div>
+                          <div class="stat-label">P99 Duration</div>
+                      </div>
+                      <div class="stat-card">
+                          <div class="stat-number">{failed_rate:.2f}%</div>
+                          <div class="stat-label">Failure Rate</div>
+                      </div>
+                      <div class="stat-card">
+                          <div class="stat-number">{(100 - failed_rate):.2f}%</div>
+                          <div class="stat-label">Success Rate</div>
+                      </div>
+                  </div>
+              </div>
+          </body>
+          </html>
+          """
+                  
+                  with open('k6-summary.html', 'w', encoding='utf-8') as f:
+                      f.write(html)
+                  print("✅ Generated k6-summary.html")
+              except Exception as e:
+                  print(f"⚠️  Error processing k6 results: {e}")
+          else:
+              print("⚠️  k6 results file not found, skipping summary generation")
+          PYTHON_SCRIPT
+
+      - name: Install JMeter
+        run: |
+          # 卸载旧版本的 JMeter（如果存在）
+          sudo apt-get remove -y jmeter 2>/dev/null || true
+          
+          # 安装最新版本的 JMeter
+          echo "安装最新版本的 JMeter..."
+          JMETER_VERSION="5.6.2"
+          cd /tmp
+          wget -q https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-${JMETER_VERSION}.tgz
+          tar xzf apache-jmeter-${JMETER_VERSION}.tgz
+          sudo mv apache-jmeter-${JMETER_VERSION} /opt/jmeter
+          sudo ln -sf /opt/jmeter/bin/jmeter /usr/local/bin/jmeter
+          sudo ln -sf /opt/jmeter/bin/jmeter.sh /usr/local/bin/jmeter.sh
+          echo "✅ JMeter ${JMETER_VERSION} 安装完成"
+          
+          # 验证安装
+          /opt/jmeter/bin/jmeter --version || /usr/local/bin/jmeter --version
+
+      - name: Configure JMeter security settings
+        run: |
+          # 创建 JMeter 配置文件目录
+          mkdir -p ~/.jmeter
+          mkdir -p /tmp/jmeter-config
+          
+          # 创建用户配置文件
+          cat > ~/.jmeter/jmeter.properties << 'EOF'
+          # 允许反序列化 ScriptWrapper 等类（用于无 GUI 模式）
+          xstream.security.allowXStreamType=org.apache.jmeter.save.ScriptWrapper
+          xstream.security.allowXStreamType=org.apache.jmeter.save.ScriptWrapperBean
+          xstream.security.allowXStreamType=org.apache.jmeter.save.ScriptWrapperBean2
+          xstream.security.allowXStreamType=org.apache.jmeter.save.ScriptWrapperBean3
+          EOF
+          echo "✅ JMeter 用户安全配置已创建"
+          
+          # 创建临时配置文件
+          cat > /tmp/jmeter-config/jmeter.properties << 'EOF'
+          xstream.security.allowXStreamType=org.apache.jmeter.save.ScriptWrapper
+          xstream.security.allowXStreamType=org.apache.jmeter.save.ScriptWrapperBean
+          xstream.security.allowXStreamType=org.apache.jmeter.save.ScriptWrapperBean2
+          xstream.security.allowXStreamType=org.apache.jmeter.save.ScriptWrapperBean3
+          EOF
+          echo "✅ JMeter 临时配置文件已创建"
+          
+          # 如果使用系统安装的 JMeter，也更新系统配置
+          if [ -f /opt/jmeter/bin/jmeter.properties ]; then
+            echo "xstream.security.allowXStreamType=org.apache.jmeter.save.ScriptWrapper" | sudo tee -a /opt/jmeter/bin/jmeter.properties
+            echo "xstream.security.allowXStreamType=org.apache.jmeter.save.ScriptWrapperBean" | sudo tee -a /opt/jmeter/bin/jmeter.properties
+            echo "✅ 已更新 JMeter 系统配置文件"
+          fi
+
+      - name: Run JMeter plan
+        continue-on-error: true
+        run: |
+          # 运行 JMeter 测试并生成 JTL 文件
+          echo "开始运行 JMeter 测试..."
+          echo "JMeter 路径: $(which jmeter || echo '/opt/jmeter/bin/jmeter')"
+          
+          # 确定 JMeter 可执行文件路径
+          JMETER_BIN="/opt/jmeter/bin/jmeter"
+          if [ ! -f "$JMETER_BIN" ]; then
+            JMETER_BIN="jmeter"
+          fi
+          
+          # 验证 JMeter 版本
+          $JMETER_BIN --version || echo "⚠️  无法获取 JMeter 版本"
+          
+          # 使用系统属性配置安全设置（最可靠的方法）
+          echo "使用系统属性配置安全设置..."
+          # 注意：--suppressJMeterWarnings 在某些版本中不可用，移除它
+          $JMETER_BIN -n -t tests/perf/jmeter_test.jmx -l jmeter.jtl \
+            -Jxstream.security.allowXStreamType=org.apache.jmeter.save.ScriptWrapper \
+            -Jxstream.security.allowXStreamType=org.apache.jmeter.save.ScriptWrapperBean \
+            -Jxstream.security.allowXStreamType=org.apache.jmeter.save.ScriptWrapperBean2 \
+            -Jxstream.security.allowXStreamType=org.apache.jmeter.save.ScriptWrapperBean3 \
+            2>&1 | grep -v "WARN StatusConsoleListener" || true
+          
+          # 检查是否成功生成 JTL 文件
+          if [ ! -f jmeter.jtl ] || [ ! -s jmeter.jtl ]; then
+            echo "⚠️  第一次尝试失败，使用更宽松的安全设置..."
+            # 回退方案：允许所有类型（不推荐，但作为最后手段）
+            $JMETER_BIN -n -t tests/perf/jmeter_test.jmx -l jmeter.jtl \
+              -Jxstream.security.allowXStreamType=* \
+              2>&1 | grep -v "WARN StatusConsoleListener" || true
+            
+            # 再次检查
+            if [ ! -f jmeter.jtl ] || [ ! -s jmeter.jtl ]; then
+              echo "⚠️  JMeter 测试完全失败，显示错误信息："
+              $JMETER_BIN -n -t tests/perf/jmeter_test.jmx -l jmeter.jtl 2>&1 | grep -v "WARN StatusConsoleListener" || true
+            fi
+          fi
+          
+          # 如果 JTL 文件生成成功，生成 HTML 报告
+          if [ -f jmeter.jtl ] && [ -s jmeter.jtl ]; then
+            echo "✅ jmeter.jtl 文件已生成，生成 HTML 报告..."
+            jmeter -g jmeter.jtl -o jmeter-report || echo "⚠️  HTML 报告生成失败"
+          else
+            echo "⚠️  jmeter.jtl 文件未生成或为空，跳过 HTML 报告生成"
+            # 检查文件是否存在但为空
+            if [ -f jmeter.jtl ] && [ ! -s jmeter.jtl ]; then
+              echo "⚠️  jmeter.jtl 文件存在但为空"
+            fi
+          fi
+
+      - name: Generate JMeter JTL summary
+        continue-on-error: true
+        run: |
+          python3 << 'PYTHON_SCRIPT'
+          import csv
+          import os
+          import statistics
+          
+          if os.path.exists('jmeter.jtl'):
+              try:
+                  # 解析 JMeter JTL (CSV 格式)
+                  results = []
+                  with open('jmeter.jtl', 'r', encoding='utf-8') as f:
+                      reader = csv.DictReader(f)
+                      for row in reader:
+                          if 'timeStamp' in row and 'elapsed' in row:
+                              try:
+                                  elapsed = int(row.get('elapsed', 0))
+                                  success = row.get('success', 'true').lower() == 'true'
+                                  label = row.get('label', 'N/A')
+                                  results.append({
+                                      'label': label,
+                                      'elapsed': elapsed,
+                                      'success': success
+                                  })
+                              except ValueError:
+                                  continue
+                  
+                  if results:
+                      total_requests = len(results)
+                      success_count = sum(1 for r in results if r['success'])
+                      failure_count = total_requests - success_count
+                      response_times = [r['elapsed'] for r in results]
+                      avg_response = statistics.mean(response_times) if response_times else 0
+                      min_response = min(response_times) if response_times else 0
+                      max_response = max(response_times) if response_times else 0
+                      median_response = statistics.median(response_times) if response_times else 0
+                      
+                      # 按标签分组统计
+                      label_stats = {}
+                      for r in results:
+                          label = r['label']
+                          if label not in label_stats:
+                              label_stats[label] = {'total': 0, 'success': 0, 'times': []}
+                          label_stats[label]['total'] += 1
+                          if r['success']:
+                              label_stats[label]['success'] += 1
+                          label_stats[label]['times'].append(r['elapsed'])
+                      
+                      # 生成 HTML 汇总
+                      html = f"""<!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>JMeter Performance Test Summary</title>
+              <style>
+                  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+                  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #f5f7fa; padding: 20px; }}
+                  .container {{ max-width: 1400px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; }}
+                  header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; }}
+                  h1 {{ font-size: 28px; margin-bottom: 10px; }}
+                  .summary {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; padding: 20px; background: #f8f9fa; }}
+                  .stat-card {{ background: white; padding: 20px; border-radius: 6px; border-left: 4px solid #667eea; }}
+                  .stat-card.success {{ border-left-color: #28a745; }}
+                  .stat-card.failure {{ border-left-color: #dc3545; }}
+                  .stat-number {{ font-size: 32px; font-weight: bold; margin-bottom: 5px; }}
+                  .stat-label {{ color: #6c757d; font-size: 14px; }}
+                  .stats-table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
+                  .stats-table th {{ background: #495057; color: white; padding: 12px; text-align: left; font-weight: 600; }}
+                  .stats-table td {{ padding: 12px; border-bottom: 1px solid #e9ecef; }}
+                  .stats-table tr:hover {{ background: #f8f9fa; }}
+                  .content {{ padding: 20px; }}
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <header>
+                      <h1>⚡ JMeter Performance Test Summary</h1>
+                      <p>Total Requests: {total_requests}</p>
+                  </header>
+                  
+                  <div class="summary">
+                      <div class="stat-card">
+                          <div class="stat-number">{total_requests:,}</div>
+                          <div class="stat-label">Total Requests</div>
+                      </div>
+                      <div class="stat-card success">
+                          <div class="stat-number">{success_count:,}</div>
+                          <div class="stat-label">Successful</div>
+                      </div>
+                      <div class="stat-card failure">
+                          <div class="stat-number">{failure_count:,}</div>
+                          <div class="stat-label">Failed</div>
+                      </div>
+                      <div class="stat-card">
+                          <div class="stat-number">{avg_response:.0f}ms</div>
+                          <div class="stat-label">Avg Response Time</div>
+                      </div>
+                      <div class="stat-card">
+                          <div class="stat-number">{median_response:.0f}ms</div>
+                          <div class="stat-label">Median Response Time</div>
+                      </div>
+                      <div class="stat-card">
+                          <div class="stat-number">{min_response}ms</div>
+                          <div class="stat-label">Min Response Time</div>
+                      </div>
+                      <div class="stat-card">
+                          <div class="stat-number">{max_response}ms</div>
+                          <div class="stat-label">Max Response Time</div>
+                      </div>
+                      <div class="stat-card">
+                          <div class="stat-number">{(success_count/total_requests*100) if total_requests > 0 else 0:.1f}%</div>
+                          <div class="stat-label">Success Rate</div>
+                      </div>
+                  </div>
+                  
+                  <div class="content">
+                      <h2>Performance by Endpoint</h2>
+                      <table class="stats-table">
+                          <thead>
+                              <tr>
+                                  <th>Endpoint</th>
+                                  <th>Total Requests</th>
+                                  <th>Successful</th>
+                                  <th>Failed</th>
+                                  <th>Avg Response (ms)</th>
+                                  <th>Min (ms)</th>
+                                  <th>Max (ms)</th>
+                                  <th>Success Rate</th>
+                              </tr>
+                          </thead>
+                          <tbody>
+          """
+                      
+                      for label, stats in sorted(label_stats.items()):
+                          avg = statistics.mean(stats['times']) if stats['times'] else 0
+                          min_time = min(stats['times']) if stats['times'] else 0
+                          max_time = max(stats['times']) if stats['times'] else 0
+                          success_rate = (stats['success'] / stats['total'] * 100) if stats['total'] > 0 else 0
+                          
+                          html += f"""
+                              <tr>
+                                  <td><strong>{label}</strong></td>
+                                  <td>{stats['total']:,}</td>
+                                  <td>{stats['success']:,}</td>
+                                  <td>{stats['total'] - stats['success']:,}</td>
+                                  <td>{avg:.0f}</td>
+                                  <td>{min_time}</td>
+                                  <td>{max_time}</td>
+                                  <td>{success_rate:.1f}%</td>
+                              </tr>
+                          """
+                      
+                      html += """
+                          </tbody>
+                      </table>
+                      <p style="margin-top: 20px; color: #6c757d;">
+                          <strong>Note:</strong> For detailed analysis, see the full JMeter HTML report in <code>jmeter-report/</code>
+                      </p>
+                  </div>
+              </div>
+          </body>
+          </html>
+          """
+                      
+                      with open('jmeter-summary.html', 'w', encoding='utf-8') as f:
+                          f.write(html)
+                      print("✅ Generated jmeter-summary.html")
+              except Exception as e:
+                  print(f"⚠️  Error processing JMeter JTL: {e}")
+          else:
+              print("⚠️  jmeter.jtl file not found, skipping summary generation")
+          PYTHON_SCRIPT
+
+      - name: List generated files
+        if: always()
+        run: |
+          echo "=== Checking for performance test artifacts ==="
+          echo "Current directory: $(pwd)"
+          echo ""
+          echo "k6 files:"
+          ls -la k6*.json k6*.html 2>/dev/null || echo "No k6 files found"
+          find . -name "k6*.json" -o -name "k6*.html" 2>/dev/null || echo "No k6 files found in any directory"
+          echo ""
+          echo "JMeter files:"
+          ls -la jmeter.jtl jmeter-summary.html 2>/dev/null || echo "No JMeter files found"
+          find . -name "jmeter.jtl" -o -name "jmeter-summary.html" 2>/dev/null || echo "No JMeter files found in any directory"
+          echo ""
+          echo "JMeter report directory:"
+          if [ -d jmeter-report ]; then
+            ls -la jmeter-report/ | head -20
+          else
+            echo "No jmeter-report directory found"
+          fi
+
+      - name: Upload k6 artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: performance_results
-          path: k6-*.json
+          name: perf_results_k6
+          path: |
+            k6-results.json
+            k6-summary.json
+            k6-summary.html
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload JMeter artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf_results_jmeter
+          path: |
+            jmeter.jtl
+            jmeter-summary.html
+            jmeter-report/**
           if-no-files-found: ignore
           retention-days: 7
 

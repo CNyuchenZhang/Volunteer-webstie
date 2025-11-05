@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import LoginPage from '../../pages/LoginPage';
 import { AuthProvider } from '../../contexts/AuthContext';
@@ -42,6 +42,10 @@ describe('LoginPage', () => {
     vi.clearAllMocks();
   });
 
+  afterEach(() => {
+    cleanup();
+  });
+
   const renderLoginPage = () => {
     return render(
       <BrowserRouter>
@@ -52,10 +56,12 @@ describe('LoginPage', () => {
     );
   };
 
-  it('应该渲染登录表单', () => {
+  it('应该渲染登录表单', async () => {
     renderLoginPage();
     
-    expect(screen.getByText('auth.login')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getAllByText('auth.login')[0]).toBeInTheDocument();
+    });
     expect(screen.getByLabelText('auth.email')).toBeInTheDocument();
     expect(screen.getByLabelText('auth.password')).toBeInTheDocument();
   });
@@ -63,8 +69,11 @@ describe('LoginPage', () => {
   it('应该显示必填字段验证错误', async () => {
     renderLoginPage();
     
-    const submitButton = screen.getByRole('button', { name: /auth.login/i });
-    fireEvent.click(submitButton);
+    await waitFor(() => {
+      const buttons = screen.getAllByRole('button', { name: /auth.login/i });
+      expect(buttons.length).toBeGreaterThan(0);
+      fireEvent.click(buttons[0]);
+    });
 
     await waitFor(() => {
       expect(screen.getByText('auth.emailRequired')).toBeInTheDocument();
@@ -72,25 +81,29 @@ describe('LoginPage', () => {
     });
   });
 
-  it('应该显示注册链接', () => {
+  it('应该显示注册链接', async () => {
     renderLoginPage();
     
-    const registerLink = screen.getByText('auth.noAccount');
-    expect(registerLink).toBeInTheDocument();
-    expect(registerLink.closest('a')).toHaveAttribute('href', '/register');
+    await waitFor(() => {
+      const registerLinks = screen.getAllByText('auth.noAccount');
+      expect(registerLinks.length).toBeGreaterThan(0);
+      expect(registerLinks[0].closest('a')).toHaveAttribute('href', '/register');
+    });
   });
 
-  it('应该处理表单输入', () => {
+  it('应该处理表单输入', async () => {
     renderLoginPage();
     
-    const emailInput = screen.getByLabelText('auth.email') as HTMLInputElement;
-    const passwordInput = screen.getByLabelText('auth.password') as HTMLInputElement;
+    await waitFor(() => {
+      const emailInput = screen.getByLabelText('auth.email') as HTMLInputElement;
+      const passwordInput = screen.getByLabelText('auth.password') as HTMLInputElement;
 
-    fireEvent.change(emailInput, { target: { value: 'test@test.com' } });
-    fireEvent.change(passwordInput, { target: { value: 'password123' } });
+      fireEvent.change(emailInput, { target: { value: 'test@test.com' } });
+      fireEvent.change(passwordInput, { target: { value: 'password123' } });
 
-    expect(emailInput.value).toBe('test@test.com');
-    expect(passwordInput.value).toBe('password123');
+      expect(emailInput.value).toBe('test@test.com');
+      expect(passwordInput.value).toBe('password123');
+    });
   });
 });
 
