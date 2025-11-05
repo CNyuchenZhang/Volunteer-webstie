@@ -118,10 +118,11 @@ class UserLogoutView(generics.GenericAPIView):
         # Delete auth token
         try:
             request.user.auth_token.delete()
-        except (AttributeError, Token.DoesNotExist):
-            # Token may not exist or user may not have auth_token attribute
-            # This is acceptable for logout, so we silently continue
-            pass
+        except (AttributeError, Token.DoesNotExist) as exc:
+            import logging
+            logging.getLogger(__name__).info(
+                "No auth token to delete during logout: %s", type(exc).__name__
+            )
         
         # Logout user
         logout(request)
