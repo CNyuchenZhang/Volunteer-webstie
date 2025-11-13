@@ -1,64 +1,64 @@
-# 志愿者平台系统 - 可扩展性与性能设计文档
+# Volunteer Platform System - Scalability and Performance Design Documentation
 
-## 🏗️ 系统架构概述
+## 🏗️ System Architecture Overview
 
-### 整体架构图
+### Overall Architecture Diagram
 ```
-外部请求 → Ingress Controller → Nginx Gateway → 微服务集群
+External Requests → Ingress Controller → Nginx Gateway → Microservices Cluster
 ```
 
-### 流量流向
-1. **外部访问** → Ingress Controller (端口30081)
-2. **Ingress路由** → Nginx Gateway Service
-3. **Nginx路由分发**：
-   - `/` → Frontend Service (前端应用)
-   - `/api/v1/users/` → User Service (用户服务)
-   - `/api/v1/activities/` → Activity Service (活动服务)
-   - `/api/v1/notifications/` → Notification Service (通知服务)
-   - `/media/avatars/` → User Service (用户头像)
-   - `/media/activities/` → Activity Service (活动图片)
+### Traffic Flow
+1. **External Access** → Ingress Controller (Port 30081)
+2. **Ingress Routing** → Nginx Gateway Service
+3. **Nginx Route Distribution**:
+   - `/` → Frontend Service (Frontend Application)
+   - `/api/v1/users/` → User Service (User Service)
+   - `/api/v1/activities/` → Activity Service (Activity Service)
+   - `/api/v1/notifications/` → Notification Service (Notification Service)
+   - `/media/avatars/` → User Service (User Avatars)
+   - `/media/activities/` → Activity Service (Activity Images)
 
-## 🔧 可扩展性设计
+## 🔧 Scalability Design
 
-### 1. 水平扩展 (Horizontal Scaling)
+### 1. Horizontal Scaling
 
-#### 微服务副本配置
-| 服务名称 | 副本数量 | 负载均衡 | 故障容错 |
-|---------|---------|---------|---------|
+#### Microservice Replica Configuration
+| Service Name | Replicas | Load Balancing | Fault Tolerance |
+|-------------|----------|----------------|----------------|
 | user-service | 3 | ✅ | ✅ |
 | activity-service | 3 | ✅ | ✅ |
 | notification-service | 3 | ✅ | ✅ |
 | nginx-gateway | 2 | ✅ | ✅ |
 
-#### 扩展优势
-- **负载分散**：请求自动分发到多个Pod实例
-- **故障容错**：单个Pod故障不影响整体服务
-- **动态扩展**：可根据负载自动调整副本数量
+#### Scaling Advantages
+- **Load Distribution**: Requests are automatically distributed across multiple Pod instances
+- **Fault Tolerance**: Single Pod failures do not affect overall service
+- **Dynamic Scaling**: Replica count can be adjusted automatically based on load
 
-### 2. 微服务架构
+### 2. Microservices Architecture
 
-#### 服务分离策略
+#### Service Separation Strategy
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   User Service  │    │ Activity Service│    │Notification Svc │
-│   (用户管理)     │    │   (活动管理)     │    │   (消息通知)     │
-│   - 认证授权     │    │   - 活动CRUD    │    │   - 消息推送     │
-│   - 用户信息     │    │   - 图片上传     │    │   - 邮件通知     │
-│   - 头像管理     │    │   - 参与者管理   │    │   - 实时通知     │
+│  (User Mgmt)    │    │  (Activity Mgmt) │    │  (Notifications) │
+│   - Auth        │    │   - Activity CRUD│    │   - Push Notify  │
+│   - User Info   │    │   - Image Upload │    │   - Email Notify │
+│   - Avatar Mgmt │    │   - Participant  │    │   - Real-time    │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
-#### 微服务优势
-- **独立扩展**：每个服务可根据需求独立扩展
-- **技术栈灵活**：不同服务可使用不同技术栈
-- **故障隔离**：单个服务故障不影响其他服务
-- **团队协作**：不同团队可独立开发维护
+#### Microservices Advantages
+- **Independent Scaling**: Each service can scale independently based on demand
+- **Technology Flexibility**: Different services can use different technology stacks
+- **Fault Isolation**: Single service failures do not affect other services
+- **Team Collaboration**: Different teams can develop and maintain independently
 
-### 3. 负载均衡机制
+### 3. Load Balancing Mechanism
 
-#### Kubernetes Service 负载均衡
+#### Kubernetes Service Load Balancing
 ```yaml
-# 自动负载均衡配置
+# Automatic load balancing configuration
 apiVersion: v1
 kind: Service
 metadata:
@@ -69,122 +69,122 @@ spec:
   ports:
   - port: 8000
     targetPort: 8000
-  type: ClusterIP  # 集群内部负载均衡
+  type: ClusterIP  # Internal cluster load balancing
 ```
 
-#### 负载均衡特性
-- **自动分发**：K8s Service自动将请求分发到健康的Pod
-- **健康检查**：自动剔除不健康的实例
-- **DNS解析**：服务间通信使用K8s DNS
-- **会话保持**：支持会话亲和性配置
+#### Load Balancing Features
+- **Automatic Distribution**: K8s Service automatically distributes requests to healthy Pods
+- **Health Checks**: Automatically removes unhealthy instances
+- **DNS Resolution**: Inter-service communication uses K8s DNS
+- **Session Affinity**: Supports session affinity configuration
 
-## ⚡ 性能优化策略
+## ⚡ Performance Optimization Strategies
 
-### 1. Nginx Gateway 性能优化
+### 1. Nginx Gateway Performance Optimization
 
-#### 连接池配置
+#### Connection Pool Configuration
 ```nginx
 events {
-    worker_connections 1024;  # 每个worker处理1024个连接
-    use epoll;               # 使用epoll事件模型 (Linux)
-    multi_accept on;         # 一次接受多个连接
+    worker_connections 1024;  # Each worker handles 1024 connections
+    use epoll;               # Use epoll event model (Linux)
+    multi_accept on;         # Accept multiple connections at once
 }
 ```
 
-#### HTTP性能优化
+#### HTTP Performance Optimization
 ```nginx
 http {
-    sendfile on;            # 高效文件传输
-    tcp_nopush on;         # 优化TCP传输
-    tcp_nodelay on;        # 减少延迟
-    keepalive_timeout 65;   # 保持连接复用
-    gzip on;               # 启用压缩
+    sendfile on;            # Efficient file transfer
+    tcp_nopush on;         # Optimize TCP transmission
+    tcp_nodelay on;        # Reduce latency
+    keepalive_timeout 65;   # Keep connection reuse
+    gzip on;               # Enable compression
     gzip_types text/plain application/json;
 }
 ```
 
-#### 缓存策略
+#### Caching Strategy
 ```nginx
-# 媒体文件缓存配置
+# Media file cache configuration
 location /media/ {
-    expires 30d;                    # 30天浏览器缓存
+    expires 30d;                    # 30-day browser cache
     add_header Cache-Control "public, immutable";
     add_header X-Cache-Status "HIT";
 }
 ```
 
-### 2. 健康检查和故障恢复
+### 2. Health Checks and Fault Recovery
 
-#### 多层健康检查机制
+#### Multi-layer Health Check Mechanism
 ```yaml
-# 存活检查 (Liveness Probe)
+# Liveness Probe
 livenessProbe:
   httpGet:
     path: /api/v1/health/
     port: 8000
-  initialDelaySeconds: 20    # 初始延迟20秒
-  periodSeconds: 10         # 每10秒检查一次
-  timeoutSeconds: 3         # 超时时间3秒
-  failureThreshold: 3       # 失败3次后重启
+  initialDelaySeconds: 20    # Initial delay 20 seconds
+  periodSeconds: 10         # Check every 10 seconds
+  timeoutSeconds: 3         # Timeout 3 seconds
+  failureThreshold: 3       # Restart after 3 failures
 
-# 就绪检查 (Readiness Probe)  
+# Readiness Probe  
 readinessProbe:
   httpGet:
     path: /api/v1/health/
     port: 8000
-  initialDelaySeconds: 5     # 初始延迟5秒
-  periodSeconds: 5          # 每5秒检查一次
-  timeoutSeconds: 2         # 超时时间2秒
+  initialDelaySeconds: 5     # Initial delay 5 seconds
+  periodSeconds: 5          # Check every 5 seconds
+  timeoutSeconds: 2         # Timeout 2 seconds
 ```
 
-#### 故障恢复优势
-- **快速故障检测**：5-10秒内检测到故障
-- **自动恢复**：不健康的Pod自动重启
-- **流量保护**：未就绪的Pod不接收流量
-- **零停机部署**：滚动更新支持零停机
+#### Fault Recovery Advantages
+- **Fast Fault Detection**: Detects faults within 5-10 seconds
+- **Automatic Recovery**: Unhealthy Pods automatically restart
+- **Traffic Protection**: Unready Pods do not receive traffic
+- **Zero-downtime Deployment**: Rolling updates support zero downtime
 
-### 3. 资源管理和限制
+### 3. Resource Management and Limits
 
-#### 资源配额配置
+#### Resource Quota Configuration
 ```yaml
 resources:
-  requests:                  # 资源请求量
-    memory: "128Mi"         # 最小内存128MB
-    cpu: "100m"            # 最小CPU 0.1核
-  limits:                   # 资源限制量
-    memory: "256Mi"         # 最大内存256MB
-    cpu: "200m"            # 最大CPU 0.2核
+  requests:                  # Resource requests
+    memory: "128Mi"         # Minimum memory 128MB
+    cpu: "100m"            # Minimum CPU 0.1 cores
+  limits:                   # Resource limits
+    memory: "256Mi"         # Maximum memory 256MB
+    cpu: "200m"            # Maximum CPU 0.2 cores
 ```
 
-#### 资源管理优势
-- **资源隔离**：防止单个服务占用过多资源
-- **性能保证**：确保关键服务有足够资源
-- **成本控制**：合理分配集群资源
-- **QoS保证**：不同服务有不同的资源优先级
+#### Resource Management Advantages
+- **Resource Isolation**: Prevents single service from consuming excessive resources
+- **Performance Guarantee**: Ensures critical services have sufficient resources
+- **Cost Control**: Reasonable allocation of cluster resources
+- **QoS Guarantee**: Different services have different resource priorities
 
-### 4. 网络性能优化
+### 4. Network Performance Optimization
 
-#### Ingress配置优化
+#### Ingress Configuration Optimization
 ```yaml
 annotations:
-  nginx.ingress.kubernetes.io/proxy-body-size: "50m"      # 支持大文件上传
-  nginx.ingress.kubernetes.io/proxy-connect-timeout: "30" # 连接超时30秒
-  nginx.ingress.kubernetes.io/proxy-send-timeout: "30"     # 发送超时30秒
-  nginx.ingress.kubernetes.io/proxy-read-timeout: "30"    # 读取超时30秒
-  nginx.ingress.kubernetes.io/ssl-redirect: "false"      # 禁用SSL重定向
-  nginx.ingress.kubernetes.io/use-regex: "true"          # 启用正则表达式
+  nginx.ingress.kubernetes.io/proxy-body-size: "50m"      # Support large file uploads
+  nginx.ingress.kubernetes.io/proxy-connect-timeout: "30" # Connection timeout 30 seconds
+  nginx.ingress.kubernetes.io/proxy-send-timeout: "30"     # Send timeout 30 seconds
+  nginx.ingress.kubernetes.io/proxy-read-timeout: "30"    # Read timeout 30 seconds
+  nginx.ingress.kubernetes.io/ssl-redirect: "false"      # Disable SSL redirect
+  nginx.ingress.kubernetes.io/use-regex: "true"          # Enable regex
 ```
 
-#### 媒体文件路由优化
+#### Media File Route Optimization
 ```nginx
-# 用户头像路由
+# User avatar routing
 location /media/avatars/ {
     proxy_pass http://user_service/media/avatars/;
     expires 30d;
     add_header Cache-Control "public, immutable";
 }
 
-# 活动图片路由
+# Activity image routing
 location /media/activities/ {
     proxy_pass http://activity_service/media/activities/;
     expires 30d;
@@ -192,29 +192,29 @@ location /media/activities/ {
 }
 ```
 
-## 📊 性能指标与监控
+## 📊 Performance Metrics and Monitoring
 
-### 1. 当前性能指标
+### 1. Current Performance Metrics
 
-#### 扩展性指标
-| 指标 | 当前值 | 目标值 | 说明 |
-|------|--------|--------|------|
-| 并发连接数 | 3,000+ | 10,000+ | 3副本 × 1024连接 |
-| 响应时间 | < 100ms | < 50ms | Nginx缓存 + 负载均衡 |
-| 可用性 | 99.9%+ | 99.99% | 多副本 + 健康检查 |
-| 吞吐量 | 1,000+ RPS | 5,000+ RPS | 每个服务3个副本 |
+#### Scalability Metrics
+| Metric | Current Value | Target Value | Description |
+|--------|---------------|--------------|-------------|
+| Concurrent Connections | 3,000+ | 10,000+ | 3 replicas × 1024 connections |
+| Response Time | < 100ms | < 50ms | Nginx cache + load balancing |
+| Availability | 99.9%+ | 99.99% | Multiple replicas + health checks |
+| Throughput | 1,000+ RPS | 5,000+ RPS | 3 replicas per service |
 
-#### 资源使用情况
-| 服务 | CPU使用率 | 内存使用率 | 网络I/O |
-|------|-----------|-----------|---------|
-| nginx-gateway | 10-20% | 128-256MB | 高 |
-| user-service | 5-15% | 128-256MB | 中 |
-| activity-service | 5-15% | 128-256MB | 中 |
-| notification-service | 5-10% | 128-256MB | 低 |
+#### Resource Usage
+| Service | CPU Usage | Memory Usage | Network I/O |
+|---------|-----------|--------------|-------------|
+| nginx-gateway | 10-20% | 128-256MB | High |
+| user-service | 5-15% | 128-256MB | Medium |
+| activity-service | 5-15% | 128-256MB | Medium |
+| notification-service | 5-10% | 128-256MB | Low |
 
-### 2. 监控配置
+### 2. Monitoring Configuration
 
-#### 日志监控
+#### Log Monitoring
 ```nginx
 log_format main '$remote_addr - $remote_user [$time_local] "$request" '
                 '$status $body_bytes_sent "$http_referer" '
@@ -223,25 +223,25 @@ log_format main '$remote_addr - $remote_user [$time_local] "$request" '
                 'uht="$upstream_header_time" urt="$upstream_response_time"';
 ```
 
-#### 关键指标
-- **响应时间**：`$request_time`, `$upstream_response_time`
-- **连接状态**：`$status`, `$upstream_connect_time`
-- **流量统计**：`$body_bytes_sent`
-- **错误率**：4xx, 5xx状态码统计
+#### Key Metrics
+- **Response Time**: `$request_time`, `$upstream_response_time`
+- **Connection Status**: `$status`, `$upstream_connect_time`
+- **Traffic Statistics**: `$body_bytes_sent`
+- **Error Rate**: 4xx, 5xx status code statistics
 
-## 🛠️ 部署配置
+## 🛠️ Deployment Configuration
 
-### 1. 服务部署配置
+### 1. Service Deployment Configuration
 
-#### 微服务部署
+#### Microservice Deployment
 ```yaml
-# 用户服务部署
+# User service deployment
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: user-service
 spec:
-  replicas: 3                    # 3个副本
+  replicas: 3                    # 3 replicas
   selector:
     matchLabels:
       app: user-service
@@ -261,15 +261,15 @@ spec:
             cpu: "200m"
 ```
 
-#### Nginx Gateway部署
+#### Nginx Gateway Deployment
 ```yaml
-# Nginx网关部署
+# Nginx gateway deployment
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: nginx-gateway
 spec:
-  replicas: 2                    # 2个副本
+  replicas: 2                    # 2 replicas
   selector:
     matchLabels:
       app: nginx-gateway
@@ -289,11 +289,11 @@ spec:
             cpu: "200m"
 ```
 
-### 2. 服务发现配置
+### 2. Service Discovery Configuration
 
-#### Service配置
+#### Service Configuration
 ```yaml
-# 用户服务
+# User service
 apiVersion: v1
 kind: Service
 metadata:
@@ -307,9 +307,9 @@ spec:
   type: ClusterIP
 ```
 
-#### Ingress配置
+#### Ingress Configuration
 ```yaml
-# 入口配置
+# Ingress configuration
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -332,11 +332,11 @@ spec:
               number: 80
 ```
 
-## 🔧 扩展实现
+## 🔧 Scaling Implementation
 
-### 1. 自动扩缩容 (HPA)
+### 1. Auto-scaling (HPA)
 
-#### 水平Pod自动扩缩容
+#### Horizontal Pod Autoscaler
 ```yaml
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
@@ -347,34 +347,34 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: user-service
-  minReplicas: 3              # 最小副本数
-  maxReplicas: 10             # 最大副本数
+  minReplicas: 3              # Minimum replicas
+  maxReplicas: 10             # Maximum replicas
   metrics:
   - type: Resource
     resource:
       name: cpu
       target:
         type: Utilization
-        averageUtilization: 70  # CPU使用率70%时扩容
+        averageUtilization: 70  # Scale up when CPU usage reaches 70%
   - type: Resource
     resource:
       name: memory
       target:
         type: Utilization
-        averageUtilization: 80  # 内存使用率80%时扩容
+        averageUtilization: 80  # Scale up when memory usage reaches 80%
 ```
 
-### 2. 缓存层优化
+### 2. Cache Layer Optimization
 
-#### Nginx缓存策略
+#### Nginx Cache Strategy
 ```nginx
-# 静态资源缓存
+# Static resource cache
 location ~* \.(jpg|jpeg|png|gif|ico|css|js)$ {
     expires 1y;
     add_header Cache-Control "public, immutable";
 }
 
-# API响应缓存
+# API response cache
 location /api/v1/activities/ {
     proxy_cache my_cache;
     proxy_cache_valid 200 5m;
@@ -382,17 +382,17 @@ location /api/v1/activities/ {
 }
 ```
 
-#### 缓存策略
-- **静态资源缓存**：图片、CSS、JS文件长期缓存
-- **API响应缓存**：热点数据短期缓存
-- **浏览器缓存**：减少重复请求
-- **Nginx缓存**：减少后端服务压力
+#### Cache Strategy
+- **Static Resource Cache**: Long-term cache for images, CSS, JS files
+- **API Response Cache**: Short-term cache for hot data
+- **Browser Cache**: Reduce duplicate requests
+- **Nginx Cache**: Reduce backend service pressure
 
-### 3. 数据库优化
+### 3. Database Optimization
 
-#### 数据库连接池
+#### Database Connection Pool
 ```python
-# Django数据库配置
+# Django database configuration
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
@@ -402,92 +402,92 @@ DATABASES = {
         'HOST': 'postgres-service',
         'PORT': '5432',
         'OPTIONS': {
-            'MAX_CONNS': 20,        # 最大连接数
-            'MIN_CONNS': 5,         # 最小连接数
-            'CONN_MAX_AGE': 3600,   # 连接最大存活时间
+            'MAX_CONNS': 20,        # Maximum connections
+            'MIN_CONNS': 5,         # Minimum connections
+            'CONN_MAX_AGE': 3600,   # Maximum connection lifetime
         }
     }
 }
 ```
 
-### 4. 基础监控系统
+### 4. Basic Monitoring System
 
-#### Kubernetes原生监控
+#### Kubernetes Native Monitoring
 ```bash
-# 查看Pod状态
+# View Pod status
 kubectl get pods -n mywork
 
-# 查看服务状态
+# View service status
 kubectl get services -n mywork
 
-# 查看资源使用情况
+# View resource usage
 kubectl top pods -n mywork
 kubectl top nodes
 ```
 
-#### 日志监控
+#### Log Monitoring
 ```bash
-# 查看应用日志
+# View application logs
 kubectl logs -f deployment/user-service -n mywork
 kubectl logs -f deployment/nginx-gateway -n mywork
 
-# 查看系统日志
+# View system logs
 kubectl logs -f deployment/activity-service -n mywork
 ```
 
-#### 基础指标监控
-- **Pod状态**：运行状态、重启次数、资源使用
-- **服务健康**：端点状态、负载均衡情况
-- **应用日志**：错误日志、访问日志、性能日志
-- **系统资源**：CPU、内存、网络、存储使用率
+#### Basic Metrics Monitoring
+- **Pod Status**: Running status, restart count, resource usage
+- **Service Health**: Endpoint status, load balancing situation
+- **Application Logs**: Error logs, access logs, performance logs
+- **System Resources**: CPU, memory, network, storage usage
 
-## 📈 性能测试
+## 📈 Performance Testing
 
-### 1. 负载测试指标
+### 1. Load Testing Metrics
 
-#### 基准测试
+#### Benchmark Testing
 ```bash
-# 使用Apache Bench进行负载测试
+# Load testing using Apache Bench
 ab -n 10000 -c 100 http://volunteer-platform.com/api/v1/activities/
 
-# 测试结果示例
+# Example test results
 Requests per second:    1000.00 [#/sec] (mean)
 Time per request:       100.000 [ms] (mean)
 Time per request:       1.000 [ms] (mean, across all concurrent requests)
 ```
 
-#### 压力测试
-- **并发用户**：1000+ 并发用户
-- **请求频率**：1000+ RPS
-- **响应时间**：< 100ms (95%请求)
-- **错误率**：< 0.1%
+#### Stress Testing
+- **Concurrent Users**: 1000+ concurrent users
+- **Request Frequency**: 1000+ RPS
+- **Response Time**: < 100ms (95% of requests)
+- **Error Rate**: < 0.1%
 
-### 2. 性能调优建议
+### 2. Performance Tuning Recommendations
 
-#### 数据库优化
-- **索引优化**：为常用查询字段添加索引
-- **查询优化**：使用EXPLAIN分析慢查询
-- **连接池**：配置合适的连接池大小
-- **读写分离**：主从数据库分离
+#### Database Optimization
+- **Index Optimization**: Add indexes for commonly queried fields
+- **Query Optimization**: Use EXPLAIN to analyze slow queries
+- **Connection Pool**: Configure appropriate connection pool size
+- **Read-Write Separation**: Separate master and slave databases
 
-#### 应用优化
-- **代码优化**：减少不必要的数据库查询
-- **缓存策略**：合理使用Nginx缓存
-- **异步处理**：使用Django异步任务处理
-- **静态资源**：Nginx直接服务静态文件
+#### Application Optimization
+- **Code Optimization**: Reduce unnecessary database queries
+- **Cache Strategy**: Reasonable use of Nginx cache
+- **Asynchronous Processing**: Use Django async tasks
+- **Static Resources**: Nginx directly serves static files
 
-## 📋 总结
+## 📋 Summary
 
-### 当前架构优势
-1. **高可用性**：多副本 + 健康检查确保99.9%+可用性
-2. **高扩展性**：微服务架构支持独立扩展
-3. **高性能**：Nginx缓存 + 负载均衡优化响应时间
-4. **易维护性**：容器化部署 + 自动化运维
+### Current Architecture Advantages
+1. **High Availability**: Multiple replicas + health checks ensure 99.9%+ availability
+2. **High Scalability**: Microservices architecture supports independent scaling
+3. **High Performance**: Nginx cache + load balancing optimize response time
+4. **Easy Maintenance**: Containerized deployment + automated operations
 
-### 未来优化方向
-1. **自动扩缩容**：基于CPU/内存使用率自动调整副本数
-2. **缓存优化**：Nginx缓存优化 + CDN加速
-3. **监控完善**：Kubernetes原生监控 + 日志分析
-4. **安全加固**：TLS加密 + 访问控制 + 安全扫描
+### Future Optimization Directions
+1. **Auto-scaling**: Automatically adjust replica count based on CPU/memory usage
+2. **Cache Optimization**: Nginx cache optimization + CDN acceleration
+3. **Monitoring Enhancement**: Kubernetes native monitoring + log analysis
+4. **Security Hardening**: TLS encryption + access control + security scanning
 
-通过以上配置和优化策略，系统能够满足高并发、高可用、高性能的业务需求，为志愿者平台提供稳定可靠的技术支撑。
+Through the above configuration and optimization strategies, the system can meet high concurrency, high availability, and high performance business requirements, providing stable and reliable technical support for the volunteer platform.
